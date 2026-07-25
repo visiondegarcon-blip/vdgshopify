@@ -15,7 +15,7 @@ export default function Header({
   const { count } = useCart();
   return (
     <header className="w-full">
-      <div className="bg-black py-2 text-center text-xs tracking-[2px] text-white">
+      <div className="flex h-[52px] items-center justify-center bg-black text-center text-xs tracking-[2px] text-white">
         FREE SHIPPING AUSTRALIA/FRANCE
       </div>
       <div className="flex flex-col items-center pt-4 pb-2">

@@ -9,7 +9,7 @@ export default async function StorePage() {
   const products = await fetchActiveProducts();
   return (
     <main className="min-h-screen bg-white">
-      <Header logo={null} />
+      <Header />
       <div className="px-4 pb-24">
         <Link href="/" className="ml-1 inline-block text-base underline-offset-2 hover:underline">
           Back Home

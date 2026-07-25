@@ -12,7 +12,7 @@ export default function AboutPage() {
 
   return (
     <main className="min-h-screen bg-white text-black">
-      <Header showCart={false} />
+      <Header showCart={false} dark logo="/site/logo-white.png" />
 
       <div className="mx-auto grid max-w-[1500px] gap-0 px-0 md:grid-cols-[minmax(0,44%)_minmax(0,56%)]">
         {/* Pinned transmission */}

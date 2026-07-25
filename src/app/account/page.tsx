@@ -105,14 +105,14 @@ export default function AccountPage() {
             <div className="flex gap-4 text-sm">
               <button
                 type="button"
-                onClick={() => setMode("signin")}
+                onClick={() => { setMode("signin"); setMsg(null); }}
                 className={mode === "signin" ? "border-b-2 border-black font-semibold" : "text-gray-500"}
               >
                 Sign In
               </button>
               <button
                 type="button"
-                onClick={() => setMode("signup")}
+                onClick={() => { setMode("signup"); setMsg(null); }}
                 className={mode === "signup" ? "border-b-2 border-black font-semibold" : "text-gray-500"}
               >
                 Create Account

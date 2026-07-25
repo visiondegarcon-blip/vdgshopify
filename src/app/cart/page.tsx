@@ -50,7 +50,7 @@ export default function CartPage() {
                 <li key={i.variantId} className="flex items-center gap-4">
                   {i.image && (
                     <div className="relative h-20 w-16 shrink-0">
-                      <Image src={i.image} alt="" fill className="object-contain" />
+                      <Image src={i.image} alt="" fill sizes="64px" className="object-contain" />
                     </div>
                   )}
                   <div className="flex-1">
@@ -63,6 +63,7 @@ export default function CartPage() {
                   <input
                     type="number"
                     min={1}
+                    max={i.maxQty ?? 10}
                     value={i.qty}
                     onChange={(e) => setQty(i.variantId, Number(e.target.value))}
                     className="w-14 border border-black px-2 py-1 text-sm"

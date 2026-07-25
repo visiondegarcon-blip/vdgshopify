@@ -68,6 +68,7 @@ export default function ProductClient({
       priceCents: variant.price_cents,
       image: images[0]?.url ?? "",
       qty: 1,
+      maxQty: variant.stock,
     });
     setAdded(true);
   };
@@ -99,7 +100,12 @@ export default function ProductClient({
         {images.length > 1 && (
           <div className="mt-5 grid w-fit grid-cols-2 gap-2">
             {images.map((img, i) => (
-              <button key={img.url} onClick={() => setFeatured(i)} className="block">
+              <button
+                key={img.url}
+                onClick={() => setFeatured(i)}
+                aria-label={`Show photo ${i + 1}`}
+                className="block"
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={img.url}

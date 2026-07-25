@@ -18,6 +18,7 @@ export default function Home() {
         alt=""
         fill
         priority
+        sizes="100vw"
         className="hidden object-cover md:block"
       />
       <Image
@@ -25,6 +26,7 @@ export default function Home() {
         alt=""
         fill
         priority
+        sizes="100vw"
         className="object-cover md:hidden"
       />
       <div className="relative z-10 flex flex-col items-center pt-[27vh]">

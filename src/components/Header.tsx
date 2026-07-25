@@ -21,7 +21,7 @@ export default function Header({
       <div className="flex flex-col items-center pt-4 pb-2">
         {logo && (
           <Link href="/">
-            <Image src={logo} alt="Vision De Garçon" width={115} height={230} className="h-[230px] w-auto object-contain" />
+            <Image src={logo} alt="Vision De Garçon" width={114} height={230} className="h-[230px] w-auto object-contain" />
           </Link>
         )}
         <div className="mt-2 text-xs tracking-[2px]">

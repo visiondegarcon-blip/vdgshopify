@@ -9,6 +9,7 @@ export type CartItem = {
   priceCents: number;
   image: string;
   qty: number;
+  maxQty?: number; // stock available when added; qty is clamped to this
 };
 
 type CartCtx = {
@@ -35,17 +36,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setItems(next);
     localStorage.setItem("vdg-cart", JSON.stringify(next));
   };
+  const clamp = (i: CartItem, qty: number) =>
+    Math.min(Math.max(1, Math.floor(qty || 1)), i.maxQty ?? 10);
   const add = (item: CartItem) => {
     const existing = items.find((i) => i.variantId === item.variantId);
     persist(
       existing
-        ? items.map((i) => (i.variantId === item.variantId ? { ...i, qty: i.qty + item.qty } : i))
-        : [...items, item]
+        ? items.map((i) =>
+            i.variantId === item.variantId ? { ...i, qty: clamp(i, i.qty + item.qty) } : i
+          )
+        : [...items, { ...item, qty: clamp(item, item.qty) }]
     );
   };
   const remove = (variantId: number) => persist(items.filter((i) => i.variantId !== variantId));
   const setQty = (variantId: number, qty: number) =>
-    persist(items.map((i) => (i.variantId === variantId ? { ...i, qty: Math.max(1, qty) } : i)));
+    persist(items.map((i) => (i.variantId === variantId ? { ...i, qty: clamp(i, qty) } : i)));
   const clear = () => persist([]);
   const count = items.reduce((n, i) => n + i.qty, 0);
   const totalCents = items.reduce((n, i) => n + i.qty * i.priceCents, 0);

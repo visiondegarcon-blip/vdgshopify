@@ -13,8 +13,21 @@ const nav = [
 export default function Home() {
   return (
     <main className="relative min-h-screen w-full overflow-hidden">
-      <Image src="/site/hero.jpg" alt="" fill priority className="object-cover object-top" />
-      <div className="relative z-10 flex flex-col items-center pt-[28vh]">
+      <Image
+        src="/site/hero-desktop.png"
+        alt=""
+        fill
+        priority
+        className="hidden object-cover md:block"
+      />
+      <Image
+        src="/site/hero-mobile.jpg"
+        alt=""
+        fill
+        priority
+        className="object-cover md:hidden"
+      />
+      <div className="relative z-10 flex flex-col items-center pt-[27vh]">
         <Image
           src="/site/BOY_PULLS_WRLD_WHT_GLOBE.png"
           alt="VDG"
@@ -22,10 +35,10 @@ export default function Home() {
           height={65}
           className="object-contain"
         />
-        <div className="mt-3 text-black font-semibold tracking-[0.25em] text-sm">
-          02/22/2023&nbsp;&nbsp;2:22PM
+        <div className="mt-3 font-platypi text-xs tracking-[2px] text-white">
+          02/22/2023&nbsp;&nbsp;&nbsp;2:22PM
         </div>
-        <nav className="mt-6 w-[132px] bg-black/40 text-center">
+        <nav className="mt-2 w-[130px] text-center">
           {nav.map((n) =>
             n.external ? (
               <a
@@ -33,7 +46,7 @@ export default function Home() {
                 href={n.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block py-2 text-white text-sm hover:bg-black/60"
+                className="block bg-black/30 py-2 font-mono text-sm text-[#dfdbdb] hover:bg-black/50"
               >
                 {n.label}
               </a>
@@ -41,7 +54,7 @@ export default function Home() {
               <Link
                 key={n.label}
                 href={n.href}
-                className="block py-2 text-white text-sm hover:bg-black/60"
+                className="block bg-black/30 py-2 font-mono text-sm text-[#dfdbdb] hover:bg-black/50"
               >
                 {n.label}
               </Link>

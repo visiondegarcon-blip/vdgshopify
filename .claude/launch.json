@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "vdg-store",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "3013"],
+      "port": 3013,
+      "cwd": "/Users/admin/vdg-store"
+    }
+  ]
+}

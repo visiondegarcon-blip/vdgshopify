@@ -1,6 +1,5 @@
 "use client";
 import { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useCart } from "@/lib/cart";
 import { fmtPrice, type Product } from "@/lib/supabase";
@@ -52,9 +51,12 @@ export default function ProductClient({
   const [variantId, setVariantId] = useState<number>(
     (inStock[0] ?? product.variants[0])?.id
   );
+  const [featured, setFeatured] = useState(0);
   const [added, setAdded] = useState(false);
   const variant = product.variants.find((v) => v.id === variantId)!;
   const soldOut = product.variants.every((v) => v.stock <= 0);
+  const onSale = !!variant?.compare_at_cents && variant.compare_at_cents > variant.price_cents;
+  const images = product.product_images;
 
   const addToCart = () => {
     if (!variant || variant.stock <= 0) return;
@@ -64,36 +66,63 @@ export default function ProductClient({
       productTitle: product.title,
       variantTitle: variant.title,
       priceCents: variant.price_cents,
-      image: product.product_images[0]?.url ?? "",
+      image: images[0]?.url ?? "",
       qty: 1,
     });
     setAdded(true);
-    setTimeout(() => setAdded(false), 1500);
   };
 
   return (
-    <div className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 pb-28 pt-6 md:grid-cols-2">
-      <div className="flex flex-col gap-6">
-        {product.product_images.map((img) => (
-          <div key={img.url} className="relative w-full">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={img.url} alt={product.title} className="w-full object-contain" />
-          </div>
-        ))}
+    <div className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 pb-28 pt-2 md:grid-cols-2">
+      {/* Featured image, swapped by the thumbnail grid on the right */}
+      <div className="md:sticky md:top-4 md:self-start">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={images[featured]?.url}
+          alt={product.title}
+          className="max-h-[80vh] w-full object-contain object-top"
+        />
       </div>
-      <div className="md:sticky md:top-6 md:self-start">
-        <h1 className="font-oswald text-2xl font-bold tracking-wide">{product.title}</h1>
+
+      <div>
+        {onSale && (
+          <span className="mb-2 inline-block bg-black px-2 py-1 text-[11px] font-bold text-white">
+            On Sale
+          </span>
+        )}
+        <h1 className="font-mono text-[21px] font-bold tracking-wide">{product.title}</h1>
         <div
-          className="prose-desc mt-4 text-sm leading-relaxed"
+          className="prose-desc mt-3 text-xs leading-relaxed"
           dangerouslySetInnerHTML={{ __html: product.description_html }}
         />
-        <div className="mt-4 text-lg font-semibold">{fmtPrice(variant?.price_cents ?? 0)} AUD</div>
+
+        {images.length > 1 && (
+          <div className="mt-5 grid w-fit grid-cols-2 gap-2">
+            {images.map((img, i) => (
+              <button key={img.url} onClick={() => setFeatured(i)} className="block">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={img.url}
+                  alt=""
+                  className={`h-14 w-14 object-cover ${i === featured ? "outline outline-2 outline-black" : "opacity-90 hover:opacity-100"}`}
+                />
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-5 text-lg font-bold">{fmtPrice(variant?.price_cents ?? 0)}</div>
+        {onSale && (
+          <div className="text-sm">
+            Was: <span className="line-through">{fmtPrice(variant!.compare_at_cents!)}</span>
+          </div>
+        )}
 
         {product.variants.length > 1 && (
           <select
             value={variantId}
             onChange={(e) => setVariantId(Number(e.target.value))}
-            className="mt-4 block border border-black px-3 py-2 text-sm"
+            className="mt-4 block border border-black px-3 py-2 font-mono text-sm"
           >
             {product.variants.map((v) => (
               <option key={v.id} value={v.id} disabled={v.stock <= 0}>
@@ -105,26 +134,35 @@ export default function ProductClient({
         )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="ml-auto w-full text-right font-mono text-sm md:order-3 md:w-auto">
+            <Link href={`/products/${nextHandle}`}>Next Item &gt;</Link>
+          </div>
           <button
             onClick={addToCart}
             disabled={soldOut || !variant || variant.stock <= 0}
-            className="bg-black px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="bg-black px-4 py-2 font-mono text-sm text-white disabled:cursor-not-allowed"
           >
-            {soldOut ? "Sold Out" : added ? "Added ✓" : "Add To Cart"}
+            {soldOut ? "Sold Out" : "Add To Cart"}
           </button>
-          <Link href="/store" className="bg-black px-4 py-2 text-sm text-white">
+          <Link href="/store" className="bg-black px-4 py-2 font-mono text-sm text-white">
             Keep Shopping
           </Link>
-          <Link href={`/products/${nextHandle}`} className="text-sm">
-            Next Item &gt;
-          </Link>
         </div>
+
+        {added && (
+          <div className="mt-4 flex items-center justify-between border border-black px-4 py-3">
+            <span className="font-mono text-sm">✓ Added to cart</span>
+            <Link href="/cart" className="bg-black px-4 py-2 font-mono text-sm text-white">
+              View Cart
+            </Link>
+          </div>
+        )}
 
         <div className="mt-8 flex flex-col gap-3">
           {ACCORDIONS.map((a) => (
             <details key={a.title} className="border border-gray-200 px-4 py-3">
-              <summary className="cursor-pointer select-none text-sm">{a.title}</summary>
-              <div className="whitespace-pre-line pt-3 text-sm text-gray-700">{a.body}</div>
+              <summary className="cursor-pointer select-none font-mono text-sm">{a.title}</summary>
+              <div className="whitespace-pre-line pt-3 text-xs leading-relaxed text-gray-700">{a.body}</div>
             </details>
           ))}
         </div>

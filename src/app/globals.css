@@ -13,10 +13,12 @@
   --font-oswald: var(--font-oswald);
 }
 
+/* Original theme: Platypi for body copy/prices, Inconsolata for titles/buttons */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-inconsolata), monospace;
+  font-family: var(--font-platypi), serif;
+  font-size: 12px;
 }
 
 .font-platypi {

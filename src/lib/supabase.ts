@@ -9,6 +9,7 @@ export type Variant = {
   id: number;
   title: string;
   price_cents: number;
+  compare_at_cents: number | null;
   stock: number;
   position: number;
 };
@@ -27,7 +28,7 @@ export type Product = {
 export async function fetchActiveProducts(): Promise<Product[]> {
   const { data, error } = await supabase
     .from("products")
-    .select("*, product_images(url,position), variants(id,title,price_cents,stock,position)")
+    .select("*, product_images(url,position), variants(id,title,price_cents,compare_at_cents,stock,position)")
     .eq("status", "active")
     .order("sort");
   if (error) throw error;
@@ -41,7 +42,7 @@ export async function fetchActiveProducts(): Promise<Product[]> {
 export async function fetchProduct(handle: string): Promise<Product | null> {
   const { data } = await supabase
     .from("products")
-    .select("*, product_images(url,position), variants(id,title,price_cents,stock,position)")
+    .select("*, product_images(url,position), variants(id,title,price_cents,compare_at_cents,stock,position)")
     .eq("handle", handle)
     .maybeSingle();
   if (data) {

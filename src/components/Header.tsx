@@ -3,34 +3,36 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/lib/cart";
 
-/* Shared page header used on store/product/content pages:
-   free-shipping banner, centered logo, fixed timestamp, cart link. */
+/* Shared page header: free-shipping banner, splatter-boy logo (as on the
+   original's inner pages), fixed brand timestamp, cart + account links. */
 export default function Header({
   logo = "/site/logo-black.png",
   showCart = true,
 }: {
-  logo?: string;
+  logo?: string | null;
   showCart?: boolean;
 }) {
   const { count } = useCart();
   return (
     <header className="w-full">
-      <div className="bg-black text-white text-center py-2 text-sm tracking-[0.2em] font-platypi">
+      <div className="bg-black py-2 text-center text-xs tracking-[2px] text-white">
         FREE SHIPPING AUSTRALIA/FRANCE
       </div>
-      <div className="flex flex-col items-center pt-6 pb-2">
-        <Link href="/">
-          <Image src={logo} alt="Vision De Garçon" width={110} height={100} className="object-contain" />
-        </Link>
-        <div className="mt-3 tracking-[0.25em] text-sm">
-          02/22/2023&nbsp;&nbsp;2:22PM
+      <div className="flex flex-col items-center pt-4 pb-2">
+        {logo && (
+          <Link href="/">
+            <Image src={logo} alt="Vision De Garçon" width={115} height={230} className="h-[230px] w-auto object-contain" />
+          </Link>
+        )}
+        <div className="mt-2 text-xs tracking-[2px]">
+          02/22/2023&nbsp;&nbsp;&nbsp;2:22PM
         </div>
         {showCart && (
-          <div className="mt-2 flex items-center gap-4 text-sm tracking-widest">
+          <div className="mt-2 flex items-center gap-4 text-sm font-bold">
             <Link href="/cart">
-              Cart&nbsp;<span className="bg-black text-white px-1">{count}</span>
+              Cart<span className="ml-0.5 bg-black px-1 text-white">{count}</span>
             </Link>
-            <Link href="/account" className="text-xs text-gray-600 hover:text-black">
+            <Link href="/account" className="text-xs font-normal text-gray-500 hover:text-black">
               Account
             </Link>
           </div>

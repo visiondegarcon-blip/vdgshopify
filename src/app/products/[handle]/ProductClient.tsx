@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/lib/cart";
 import { fmtPrice, type Product } from "@/lib/supabase";
+import { track } from "@/lib/track";
 
 const ACCORDIONS: { title: string; body: string }[] = [
   {
@@ -55,6 +56,11 @@ export default function ProductClient({
   const [added, setAdded] = useState(false);
   const variant = product.variants.find((v) => v.id === variantId)!;
   const soldOut = product.variants.every((v) => v.stock <= 0);
+
+  useEffect(() => {
+    track("product_view", { handle: product.handle, title: product.title, soldOut });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product.handle]);
   const onSale = !!variant?.compare_at_cents && variant.compare_at_cents > variant.price_cents;
   const images = product.product_images;
 
@@ -70,6 +76,7 @@ export default function ProductClient({
       qty: 1,
       maxQty: variant.stock,
     });
+    track("add_to_cart", { handle: product.handle, variant: variant.title, priceCents: variant.price_cents });
     setAdded(true);
   };
 

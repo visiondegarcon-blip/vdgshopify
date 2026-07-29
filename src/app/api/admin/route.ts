@@ -192,6 +192,46 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ customers: [...map.values()].sort((a, b) => b.spentCents - a.spentCents) });
       }
 
+      case "speed_metrics": {
+        // Shopify-style Online Store dashboard: web-vitals P75s + device sessions
+        const days = Math.min(Number(body.days) || 30, 90);
+        const cutoff = new Date(Date.now() - days * 864e5).toISOString();
+        const { data: vitals } = await db
+          .from("events")
+          .select("meta")
+          .eq("event", "web_vital")
+          .gte("ts", cutoff)
+          .limit(20000);
+        const byName: Record<string, number[]> = {};
+        for (const v of vitals ?? []) {
+          const m = v.meta as { name?: string; value?: number };
+          if (!m?.name || typeof m.value !== "number") continue;
+          (byName[m.name] ??= []).push(m.value);
+        }
+        const p75 = (arr: number[]) => {
+          if (!arr.length) return null;
+          const s = [...arr].sort((a, b) => a - b);
+          return s[Math.min(s.length - 1, Math.floor(s.length * 0.75))];
+        };
+        const { data: sessions } = await db
+          .from("events")
+          .select("session_id,device")
+          .eq("event", "page_view")
+          .gte("ts", cutoff)
+          .limit(50000);
+        const devices: Record<string, Set<string>> = {};
+        for (const s of sessions ?? []) {
+          (devices[s.device ?? "other"] ??= new Set()).add(s.session_id);
+        }
+        return NextResponse.json({
+          lcp: p75(byName.LCP ?? []),
+          inp: p75(byName.INP ?? []),
+          cls: p75(byName.CLS ?? []),
+          samples: { lcp: (byName.LCP ?? []).length, inp: (byName.INP ?? []).length, cls: (byName.CLS ?? []).length },
+          devices: Object.fromEntries(Object.entries(devices).map(([k, v]) => [k, v.size])),
+        });
+      }
+
       case "get_settings": {
         const { data } = await db.from("site_settings").select("key,value");
         return NextResponse.json({ settings: Object.fromEntries((data ?? []).map((s) => [s.key, s.value])) });

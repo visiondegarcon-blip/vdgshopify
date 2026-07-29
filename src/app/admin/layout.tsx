@@ -223,14 +223,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="mt-6 border-t border-black/10 px-3 pt-3 text-[11px] uppercase tracking-wide text-gray-500">
           Sales channel
         </div>
-        <a
-          href="https://vdg-store.vercel.app"
-          target="_blank"
-          rel="noreferrer"
-          className="mt-1 flex items-center gap-2.5 rounded-lg px-3 py-1.5 hover:bg-black/5"
+        <Link
+          href="/admin/online-store"
+          className={`mt-1 flex items-center gap-2.5 rounded-lg px-3 py-1.5 ${
+            pathname.startsWith("/admin/online-store") ? "bg-white font-semibold shadow-sm" : "hover:bg-black/5"
+          }`}
         >
           <span className="w-4 text-center opacity-70">◫</span> Online Store
-        </a>
+        </Link>
       </aside>
 
       <main className="ml-[220px] px-8 pb-16 pt-20">

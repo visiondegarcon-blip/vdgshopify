@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
         status: "paid",
         shipping_name: session.customer_details?.name ?? null,
         shipping_address: session.customer_details?.address ?? null,
+        discount_cents: session.total_details?.amount_discount ?? 0,
       })
       .select()
       .single();
@@ -75,6 +76,19 @@ export async function POST(req: NextRequest) {
         unit_price_cents: v?.price_cents ?? 0,
       });
       await admin.rpc("decrement_stock", { v_id: c.v, qty: c.q });
+    }
+
+    // server-authoritative purchase event for analytics, tied to the
+    // storefront session via checkout metadata
+    const sid = session.metadata?.sid;
+    if (sid) {
+      await admin.from("events").insert({
+        session_id: sid,
+        event: "purchase",
+        path: "/success",
+        device: null,
+        meta: { order_id: order.id, total_cents: session.amount_total ?? 0 },
+      });
     }
   }
 

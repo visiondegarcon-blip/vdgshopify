@@ -67,8 +67,10 @@ export async function POST(req: NextRequest) {
       allowed_countries: ["AU", "FR", "US", "GB", "CA", "NZ", "DE", "BE", "NL", "CH", "IT", "ES", "PT", "IE", "BR", "JP"],
     },
     shipping_options: shippingOptions,
+    allow_promotion_codes: true,
     metadata: {
       cart: JSON.stringify(items.map((i) => ({ v: i.variantId, q: i.qty }))),
+      sid: typeof body?.sid === "string" ? body.sid.slice(0, 64) : "",
     },
     success_url: `${origin}/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/cart`,

@@ -5,6 +5,7 @@ import Link from "next/link";
 import Header from "@/components/Header";
 import { useCart } from "@/lib/cart";
 import { fmtPrice } from "@/lib/supabase";
+import { sessionId, track } from "@/lib/track";
 
 export default function CartPage() {
   const { items, remove, setQty, totalCents } = useCart();
@@ -14,12 +15,14 @@ export default function CartPage() {
   const checkout = async () => {
     setLoading(true);
     setError(null);
+    track("checkout_started", { items: items.length, totalCents });
     try {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: items.map((i) => ({ variantId: i.variantId, qty: i.qty })),
+          sid: sessionId(),
         }),
       });
       const data = await res.json();

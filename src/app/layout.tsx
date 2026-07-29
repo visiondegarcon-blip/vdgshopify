@@ -3,6 +3,7 @@ import { Inconsolata, Platypi, Oswald } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart";
 import MusicPlayer from "@/components/MusicPlayer";
+import Tracker from "@/components/Tracker";
 
 const inconsolata = Inconsolata({ subsets: ["latin"], variable: "--font-inconsolata" });
 const platypi = Platypi({ subsets: ["latin"], variable: "--font-platypi" });
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <CartProvider>
           {children}
           <MusicPlayer />
+          <Tracker />
         </CartProvider>
       </body>
     </html>

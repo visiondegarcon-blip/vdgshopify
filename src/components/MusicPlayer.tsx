@@ -1,9 +1,12 @@
 "use client";
 import { useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 
 export default function MusicPlayer() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
+  const pathname = usePathname();
+  if (pathname.startsWith("/admin")) return null;
 
   const toggle = () => {
     const a = audioRef.current;

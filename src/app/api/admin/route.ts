@@ -13,12 +13,33 @@ function admin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
 
+// The JWT is already signature-verified by the auth.getUser() network call
+// below; decoding its payload here just reads the `aal` claim it carries.
+function decodeAal(token: string): string | null {
+  try {
+    const payload = token.split(".")[1];
+    const json = Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    return JSON.parse(json).aal ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function authorize(req: NextRequest) {
   const token = req.headers.get("authorization")?.replace(/^Bearer /, "");
   if (!token) return null;
   const { data, error } = await admin().auth.getUser(token);
   if (error || !data.user?.email) return null;
-  return ADMIN_EMAILS.includes(data.user.email.toLowerCase()) ? data.user : null;
+  if (!ADMIN_EMAILS.includes(data.user.email.toLowerCase())) return null;
+
+  // If this account has TOTP enrolled, a password-only (aal1) token is not
+  // enough — require the token to have cleared the aal2 challenge.
+  const hasVerifiedTotp = (data.user.factors ?? []).some(
+    (f) => f.factor_type === "totp" && f.status === "verified"
+  );
+  if (hasVerifiedTotp && decodeAal(token) !== "aal2") return null;
+
+  return data.user;
 }
 
 export async function POST(req: NextRequest) {

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { adminCall } from "./adminApi";
+import { getAal, listTotpFactors, challengeAndVerify } from "./mfa";
 
 /* Shopify-admin-style shell: dark topbar, light sidebar, grey canvas.
    Gated by Supabase auth + server-side email allowlist. */
@@ -26,6 +27,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [unfulfilled, setUnfulfilled] = useState(0);
+  const [needsMfa, setNeedsMfa] = useState(false);
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaMsg, setMfaMsg] = useState<string | null>(null);
+  const [mfaChecking, setMfaChecking] = useState(true);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
@@ -40,12 +46,83 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       .catch(() => setAuthorized(false));
   }, [user]);
 
+  // A password sign-in alone only reaches aal1. If this account has a
+  // verified TOTP factor, the admin API refuses aal1 tokens — so gate the
+  // UI on the same check and prompt for the 6-digit code before continuing.
+  useEffect(() => {
+    if (!user) return;
+    setMfaChecking(true);
+    getAal()
+      .then(async (aal) => {
+        if (aal.currentLevel === "aal1" && aal.nextLevel === "aal2") {
+          const factors = await listTotpFactors();
+          const verified = factors.find((f) => f.status === "verified");
+          setMfaFactorId(verified?.id ?? null);
+          setNeedsMfa(true);
+        } else {
+          setNeedsMfa(false);
+        }
+      })
+      .finally(() => setMfaChecking(false));
+  }, [user]);
+
+  const submitMfa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mfaFactorId) return;
+    setMfaMsg(null);
+    try {
+      await challengeAndVerify(mfaFactorId, mfaCode);
+      setNeedsMfa(false);
+    } catch (err) {
+      setMfaMsg(err instanceof Error ? err.message : "Invalid code");
+    }
+  };
+
   useEffect(() => {
     if (!authorized) return;
     adminCall<{ unfulfilled: number }>("stats")
       .then((s) => setUnfulfilled(s.unfulfilled))
       .catch(() => {});
   }, [authorized, pathname]);
+
+  if (user && authorized === true && (mfaChecking || needsMfa)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f1f1f1] font-sans">
+        <div className="w-[360px] rounded-xl bg-white p-8 shadow">
+          <div className="text-xl font-semibold text-[#1a1a1a]">Two-factor authentication</div>
+          {mfaChecking ? (
+            <p className="mt-3 text-sm text-gray-500">Checking…</p>
+          ) : (
+            <form className="mt-5 flex flex-col gap-3" onSubmit={submitMfa}>
+              <p className="text-sm text-gray-600">Enter the 6-digit code from your authenticator app.</p>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoFocus
+                required
+                maxLength={6}
+                placeholder="123456"
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ""))}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-center text-lg tracking-[0.3em]"
+              />
+              {mfaMsg && <p className="text-xs text-red-700">{mfaMsg}</p>}
+              <button className="rounded-lg bg-[#1a1a1a] py-2 text-sm font-medium text-white">
+                Verify
+              </button>
+              <button
+                type="button"
+                onClick={() => supabase.auth.signOut()}
+                className="text-xs text-gray-500 underline"
+              >
+                Sign out
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (!user || authorized === false) {
     return (

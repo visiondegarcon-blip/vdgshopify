@@ -1,7 +1,32 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/lib/cart";
+import { supabase } from "@/lib/supabase";
+
+/* Banner text is editable from the admin Settings page; cached in
+   sessionStorage so it only flashes on the very first page view. */
+function useBannerText() {
+  const [text, setText] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return sessionStorage.getItem("vdg-banner") ?? "";
+  });
+  useEffect(() => {
+    supabase
+      .from("site_settings")
+      .select("value")
+      .eq("key", "banner_text")
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.value != null) {
+          setText(data.value);
+          sessionStorage.setItem("vdg-banner", data.value);
+        }
+      });
+  }, []);
+  return text;
+}
 
 /* Shared page header: free-shipping banner, splatter-boy logo (as on the
    original's inner pages), fixed brand timestamp, cart + account links. */
@@ -18,11 +43,12 @@ export default function Header({
   dark?: boolean;
 }) {
   const { count } = useCart();
+  const banner = useBannerText();
   return (
     <header className="w-full">
       <div className={dark ? "bg-black text-white" : ""}>
         <div className="flex h-[52px] items-center justify-center bg-black text-center text-xs tracking-[2px] text-white">
-          FREE SHIPPING AUSTRALIA/FRANCE
+          {banner}
         </div>
         <div className="flex flex-col items-center pt-4 pb-2">
           {logo && (

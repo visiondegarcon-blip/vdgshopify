@@ -50,6 +50,15 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // shipping labels/rates are editable from the admin Settings page
+  const { data: settingsRows } = await supabase.from("site_settings").select("key,value");
+  const settings = Object.fromEntries((settingsRows ?? []).map((s) => [s.key, s.value]));
+  const intlCents = Math.max(0, parseInt(settings.shipping_intl_cents ?? "1500", 10) || 1500);
+  const shippingOptions: Stripe.Checkout.SessionCreateParams.ShippingOption[] = [
+    { shipping_rate_data: { display_name: settings.shipping_free_label ?? "Free Shipping (Australia)", type: "fixed_amount", fixed_amount: { amount: 0, currency: "aud" } } },
+    { shipping_rate_data: { display_name: settings.shipping_intl_label ?? "International Shipping", type: "fixed_amount", fixed_amount: { amount: intlCents, currency: "aud" } } },
+  ];
+
   const origin = req.headers.get("origin") ?? "http://localhost:3000";
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
@@ -57,10 +66,7 @@ export async function POST(req: NextRequest) {
     shipping_address_collection: {
       allowed_countries: ["AU", "FR", "US", "GB", "CA", "NZ", "DE", "BE", "NL", "CH", "IT", "ES", "PT", "IE", "BR", "JP"],
     },
-    shipping_options: [
-      { shipping_rate_data: { display_name: "Free Shipping (Australia/France)", type: "fixed_amount", fixed_amount: { amount: 0, currency: "aud" } } },
-      { shipping_rate_data: { display_name: "International Shipping", type: "fixed_amount", fixed_amount: { amount: 1500, currency: "aud" } } },
-    ],
+    shipping_options: shippingOptions,
     metadata: {
       cart: JSON.stringify(items.map((i) => ({ v: i.variantId, q: i.qty }))),
     },

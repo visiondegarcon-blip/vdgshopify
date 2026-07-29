@@ -171,6 +171,24 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ customers: [...map.values()].sort((a, b) => b.spentCents - a.spentCents) });
       }
 
+      case "get_settings": {
+        const { data } = await db.from("site_settings").select("key,value");
+        return NextResponse.json({ settings: Object.fromEntries((data ?? []).map((s) => [s.key, s.value])) });
+      }
+
+      case "update_settings": {
+        const { settings } = body; // { key: value }
+        const allowed = ["banner_text", "shipping_free_label", "shipping_intl_label", "shipping_intl_cents"];
+        for (const [key, value] of Object.entries(settings ?? {})) {
+          if (!allowed.includes(key)) continue;
+          const { error } = await db
+            .from("site_settings")
+            .upsert({ key, value: String(value), updated_at: new Date().toISOString() });
+          if (error) throw error;
+        }
+        return NextResponse.json({ ok: true });
+      }
+
       default:
         return NextResponse.json({ error: "Unknown action" }, { status: 400 });
     }

@@ -1,11 +1,19 @@
 import Link from "next/link";
 import Image from "next/image";
 import Header from "@/components/Header";
+import LockScreen from "@/components/LockScreen";
 import { fetchActiveProducts, fmtPrice } from "@/lib/supabase";
+import { getActiveLock } from "@/lib/lock";
 
 export const revalidate = 60;
 
-export default async function StorePage() {
+export default async function StorePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ unlock?: string }>;
+}) {
+  const lock = await getActiveLock(await searchParams);
+  if (lock) return <LockScreen config={lock} />;
   const products = await fetchActiveProducts();
   return (
     <main className="t-surface min-h-screen">

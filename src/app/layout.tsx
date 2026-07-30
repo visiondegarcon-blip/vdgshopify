@@ -5,6 +5,7 @@ import { CartProvider } from "@/lib/cart";
 import MusicPlayer from "@/components/MusicPlayer";
 import Tracker from "@/components/Tracker";
 import ThemePreview from "@/components/ThemePreview";
+import ScrollPopup from "@/components/ScrollPopup";
 import { getActiveTheme, themeStyle } from "@/lib/theme";
 
 const inconsolata = Inconsolata({ subsets: ["latin"], variable: "--font-inconsolata" });
@@ -33,6 +34,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <MusicPlayer />
           <Tracker />
           <ThemePreview />
+          <ScrollPopup />
         </CartProvider>
       </body>
     </html>

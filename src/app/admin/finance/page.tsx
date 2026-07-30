@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { adminCall, fmt } from "../adminApi";
 
 type Overview = {
-  gross: number; fees: number; net: number; refunds: number; chargeCount: number;
+  gross: number; discounts: number; refunds: number; orderCount: number;
+  fees: number; net: number; stripeGross: number; stripeCharges: number;
   payouts: { id: string; amount: number; arrival: number; status: string }[];
   txns: { ts: number; type: string; amount: number; fee: number; net: number; desc: string }[];
 };
@@ -25,7 +26,7 @@ function download(name: string, text: string) {
 
 export default function FinancePage() {
   const [tab, setTab] = useState<"overview" | "eofy">("overview");
-  const [range, setRange] = useState<keyof typeof RANGES>("90d");
+  const [range, setRange] = useState<keyof typeof RANGES>("All");
   const [data, setData] = useState<Overview | null>(null);
   const [fy, setFy] = useState(() => {
     const now = new Date();
@@ -117,14 +118,16 @@ export default function FinancePage() {
 
       {tab === "overview" && (
         <>
-          <div className="mt-4 grid gap-4 md:grid-cols-4">
+          <div className="mt-4 grid gap-4 md:grid-cols-3 lg:grid-cols-6">
             {data
               ? (
                   [
-                    ["Gross (charges)", fmt(data.gross)],
+                    ["Gross sales", fmt(data.gross)],
+                    ["Orders", String(data.orderCount)],
+                    ["Discounts", fmt(data.discounts)],
+                    ["Refunds", fmt(data.refunds)],
                     ["Stripe fees", fmt(data.fees)],
                     ["Net", fmt(data.net)],
-                    ["Refunds", fmt(data.refunds)],
                   ] as const
                 ).map(([k, v]) => (
                   <div key={k} className="rounded-xl bg-white p-4 shadow-sm">
@@ -134,6 +137,13 @@ export default function FinancePage() {
                 ))
               : "Loading…"}
           </div>
+          {data && (
+            <p className="mt-2 text-[11px] text-gray-400">
+              Sales figures include your imported Shopify history. Stripe fees, payouts and
+              transactions below only cover payments taken on the new site
+              {data.stripeCharges === 0 ? " — none yet, they'll appear with your first live Stripe order." : "."}
+            </p>
+          )}
 
           <div className="mt-4 rounded-xl bg-white p-5 shadow-sm">
             <div className="text-sm font-semibold">Payouts to your bank</div>

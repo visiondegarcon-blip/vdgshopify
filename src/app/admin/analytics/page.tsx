@@ -12,7 +12,7 @@ const RANGES = { "7d": 7, "30d": 30, "90d": 90, All: 3650 } as const;
 
 export default function AnalyticsPage() {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [range, setRange] = useState<keyof typeof RANGES>("30d");
+  const [range, setRange] = useState<keyof typeof RANGES>("All");
   const [tab, setTab] = useState<"overview" | "live">("overview");
 
   useEffect(() => {

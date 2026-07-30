@@ -490,26 +490,98 @@ export async function POST(req: NextRequest) {
 
       case "finance_overview": {
         const days = Math.min(Number(body.days) || 90, 3650);
-        const since = Math.floor((Date.now() - days * 864e5) / 1000);
-        const StripeLib = (await import("stripe")).default;
-        const stripe = new StripeLib(process.env.STRIPE_SECRET_KEY!);
-        let gross = 0, fees = 0, net = 0, refunds = 0, chargeCount = 0;
-        const txns: { ts: number; type: string; amount: number; fee: number; net: number; desc: string }[] = [];
-        for await (const t of stripe.balanceTransactions.list({ created: { gte: since }, limit: 100 })) {
-          txns.push({ ts: t.created, type: t.type, amount: t.amount, fee: t.fee, net: t.net, desc: t.description ?? "" });
-          if (t.type === "charge" || t.type === "payment") {
-            gross += t.amount; fees += t.fee; net += t.net; chargeCount++;
-          } else if (t.type.startsWith("refund")) {
-            refunds += Math.abs(t.amount);
+        const cutoffIso = new Date(Date.now() - days * 864e5).toISOString();
+        // Sales figures come from the orders table so imported Shopify history
+        // counts too — Stripe balance data only covers charges on the new site.
+        const { data: rangeOrders } = await db
+          .from("orders")
+          .select("total_cents,discount_cents,status,created_at")
+          .gte("created_at", cutoffIso);
+        let gross = 0, discounts = 0, refunds = 0, orderCount = 0;
+        for (const o of rangeOrders ?? []) {
+          if (o.status === "paid") {
+            gross += o.total_cents;
+            discounts += o.discount_cents ?? 0;
+            orderCount++;
+          } else if (o.status === "refunded") {
+            refunds += o.total_cents;
           }
-          if (txns.length >= 1000) break;
         }
+        let fees = 0, stripeGross = 0, stripeCharges = 0;
+        const txns: { ts: number; type: string; amount: number; fee: number; net: number; desc: string }[] = [];
         const payouts: { id: string; amount: number; arrival: number; status: string }[] = [];
-        for await (const p of stripe.payouts.list({ limit: 10 })) {
-          payouts.push({ id: p.id, amount: p.amount, arrival: p.arrival_date, status: p.status });
-          if (payouts.length >= 10) break;
+        try {
+          const since = Math.floor((Date.now() - days * 864e5) / 1000);
+          const StripeLib = (await import("stripe")).default;
+          const stripe = new StripeLib(process.env.STRIPE_SECRET_KEY!);
+          for await (const t of stripe.balanceTransactions.list({ created: { gte: since }, limit: 100 })) {
+            txns.push({ ts: t.created, type: t.type, amount: t.amount, fee: t.fee, net: t.net, desc: t.description ?? "" });
+            if (t.type === "charge" || t.type === "payment") {
+              stripeGross += t.amount; fees += t.fee; stripeCharges++;
+            }
+            if (txns.length >= 1000) break;
+          }
+          for await (const p of stripe.payouts.list({ limit: 10 })) {
+            payouts.push({ id: p.id, amount: p.amount, arrival: p.arrival_date, status: p.status });
+            if (payouts.length >= 10) break;
+          }
+        } catch {}
+        return NextResponse.json({
+          gross, discounts, refunds, orderCount,
+          fees, net: gross - fees, stripeGross, stripeCharges,
+          payouts, txns: txns.slice(0, 200),
+        });
+      }
+
+      case "journeys": {
+        const days = Math.min(Number(body.days) || 3650, 3650);
+        const cutoff = new Date(Date.now() - days * 864e5).toISOString();
+        const { data: events } = await db
+          .from("events")
+          .select("session_id,event,path,ts")
+          .eq("event", "page_view")
+          .gte("ts", cutoff)
+          .order("ts")
+          .limit(100000);
+        const bySession = new Map<string, string[]>();
+        for (const e of events ?? []) {
+          if (!e.path) continue;
+          const seq = bySession.get(e.session_id) ?? [];
+          // collapse consecutive repeats (reloads) and cap at 5 steps
+          if (seq.length < 5 && seq[seq.length - 1] !== e.path) seq.push(e.path);
+          bySession.set(e.session_id, seq);
         }
-        return NextResponse.json({ gross, fees, net, refunds, chargeCount, payouts, txns: txns.slice(0, 200) });
+        const seqCounts = new Map<string, number>();
+        const transitions = new Map<string, number>(); // "step|from|to" -> count
+        const nodeCounts = new Map<string, number>(); // "step|path" -> count
+        let exits = 0;
+        for (const seq of bySession.values()) {
+          if (!seq.length) continue;
+          seqCounts.set(seq.join("→"), (seqCounts.get(seq.join("→")) ?? 0) + 1);
+          if (seq.length === 1) exits++;
+          seq.forEach((p, i) => {
+            if (i >= 4) return;
+            nodeCounts.set(`${i}|${p}`, (nodeCounts.get(`${i}|${p}`) ?? 0) + 1);
+            if (i < seq.length - 1 && i < 3)
+              transitions.set(`${i}|${p}|${seq[i + 1]}`, (transitions.get(`${i}|${p}|${seq[i + 1]}`) ?? 0) + 1);
+          });
+        }
+        return NextResponse.json({
+          totalSessions: bySession.size,
+          bouncedSessions: exits,
+          sequences: [...seqCounts.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 30)
+            .map(([seq, count]) => ({ steps: seq.split("→"), count })),
+          nodes: [...nodeCounts.entries()].map(([k, count]) => {
+            const [step, path] = [k.slice(0, 1), k.slice(2)];
+            return { step: Number(step), path, count };
+          }),
+          transitions: [...transitions.entries()].map(([k, count]) => {
+            const [step, from, to] = k.split("|");
+            return { step: Number(step), from, to, count };
+          }),
+        });
       }
 
       case "finance_eofy": {
@@ -608,11 +680,23 @@ export async function POST(req: NextRequest) {
             pages.set(e.path ?? "?", (pages.get(e.path ?? "?") ?? 0) + 1);
           }
         }
+        const { data: todayOrders } = await db
+          .from("orders")
+          .select("total_cents,status")
+          .gte("created_at", dayStart.toISOString());
+        let ordersToday = 0, salesToday = 0;
+        for (const o of todayOrders ?? []) {
+          if (o.status !== "paid") continue;
+          ordersToday++;
+          salesToday += o.total_cents;
+        }
         return NextResponse.json({
           liveVisitors: [...live.values()],
           liveCount: live.size,
           sessionsToday: sessionsToday.size,
           viewsToday,
+          ordersToday,
+          salesToday,
           topPages: [...pages.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6),
         });
       }

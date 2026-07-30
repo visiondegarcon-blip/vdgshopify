@@ -1,16 +1,18 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import createGlobe from "cobe";
-import { adminCall } from "../adminApi";
+import { adminCall, fmt } from "../adminApi";
 
-/* Shopify-style live view: rotating globe with a dot per active visitor
-   (last 5 minutes), refreshed every 5 seconds. */
+/* Shopify-style Live View: full-bleed dark panel, draggable rotating globe
+   with glowing teal visitor markers, stat bar underneath. Polls every 5s. */
 
 type Live = {
   liveVisitors: { country: string | null; city: string | null; path: string | null }[];
   liveCount: number;
   sessionsToday: number;
   viewsToday: number;
+  ordersToday: number;
+  salesToday: number;
   topPages: [string, number][];
 };
 
@@ -32,6 +34,9 @@ export default function LiveView() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [live, setLive] = useState<Live | null>(null);
   const markersRef = useRef<{ location: [number, number]; size: number }[]>([]);
+  const pointer = useRef<{ startX: number; startY: number; basePhi: number; baseTheta: number } | null>(null);
+  const rot = useRef({ phi: 0, theta: 0.22, auto: 0 });
+  const [grabbing, setGrabbing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,7 +51,7 @@ export default function LiveView() {
         }
         markersRef.current = [...counts.entries()].map(([c, n]) => ({
           location: GEO[c],
-          size: Math.min(0.1 + n * 0.04, 0.25),
+          size: Math.min(0.06 + n * 0.03, 0.18),
         }));
       } catch {}
     };
@@ -59,81 +64,150 @@ export default function LiveView() {
   }, []);
 
   useEffect(() => {
-    if (!canvasRef.current) return;
-    let phi = 0;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     let raf = 0;
-    const globe = createGlobe(canvasRef.current, {
+    let pulse = 0;
+    const globe = createGlobe(canvas, {
       devicePixelRatio: 2,
-      width: 900,
-      height: 900,
+      width: 1000,
+      height: 1000,
       phi: 0,
-      theta: 0.15,
+      theta: 0.22,
       dark: 1,
-      diffuse: 1.1,
-      mapSamples: 16000,
-      mapBrightness: 5,
-      baseColor: [0.12, 0.12, 0.14],
-      markerColor: [1, 0.23, 0.19],
-      glowColor: [0.08, 0.08, 0.1],
+      diffuse: 1.2,
+      mapSamples: 24000,
+      mapBrightness: 7,
+      baseColor: [0.22, 0.27, 0.36],
+      markerColor: [0.1, 0.95, 0.65],
+      glowColor: [0.12, 0.16, 0.24],
       markers: [],
     });
-    const spin = () => {
-      phi += 0.004;
-      globe.update({ phi, markers: markersRef.current });
-      raf = requestAnimationFrame(spin);
+    const frame = () => {
+      pulse += 0.06;
+      if (!pointer.current) rot.current.auto += 0.0022; // gentle spin unless dragging
+      const beat = 1 + 0.35 * Math.sin(pulse); // pulsing marker halo
+      globe.update({
+        phi: rot.current.phi + rot.current.auto,
+        theta: rot.current.theta,
+        markers: markersRef.current.map((m) => ({ ...m, size: m.size * beat })),
+      });
+      raf = requestAnimationFrame(frame);
     };
-    raf = requestAnimationFrame(spin);
+    raf = requestAnimationFrame(frame);
+
+    const down = (e: PointerEvent) => {
+      pointer.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        basePhi: rot.current.phi,
+        baseTheta: rot.current.theta,
+      };
+      canvas.setPointerCapture(e.pointerId);
+      setGrabbing(true);
+    };
+    const move = (e: PointerEvent) => {
+      if (!pointer.current) return;
+      rot.current.phi = pointer.current.basePhi + (e.clientX - pointer.current.startX) * 0.006;
+      rot.current.theta = Math.min(
+        1.1,
+        Math.max(-0.6, pointer.current.baseTheta + (e.clientY - pointer.current.startY) * 0.004)
+      );
+    };
+    const up = () => {
+      pointer.current = null;
+      setGrabbing(false);
+    };
+    canvas.addEventListener("pointerdown", down);
+    canvas.addEventListener("pointermove", move);
+    canvas.addEventListener("pointerup", up);
+    canvas.addEventListener("pointercancel", up);
     return () => {
       cancelAnimationFrame(raf);
+      canvas.removeEventListener("pointerdown", down);
+      canvas.removeEventListener("pointermove", move);
+      canvas.removeEventListener("pointerup", up);
+      canvas.removeEventListener("pointercancel", up);
       globe.destroy();
     };
   }, []);
 
   return (
-    <div className="grid gap-5 md:grid-cols-[1fr_320px]">
-      <div className="relative overflow-hidden rounded-xl bg-[#05070d] shadow-sm">
-        <canvas ref={canvasRef} style={{ width: "100%", aspectRatio: "1", display: "block" }} />
-        <div className="absolute left-4 top-4 text-white">
-          <div className="text-3xl font-bold">{live?.liveCount ?? "—"}</div>
-          <div className="text-[11px] uppercase tracking-[2px] text-white/60">
+    <div className="overflow-hidden rounded-xl bg-[#0b0e14] shadow-sm">
+      <div className="relative flex justify-center">
+        <canvas
+          ref={canvasRef}
+          style={{
+            width: "min(100%, 620px)",
+            aspectRatio: "1",
+            display: "block",
+            cursor: grabbing ? "grabbing" : "grab",
+            touchAction: "none",
+          }}
+        />
+        <div className="pointer-events-none absolute left-5 top-5 text-white">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
+            </span>
+            <span className="text-[11px] font-semibold uppercase tracking-[2px] text-white/70">Live</span>
+          </div>
+          <div className="mt-2 text-5xl font-bold tabular-nums">{live?.liveCount ?? "—"}</div>
+          <div className="mt-1 text-[11px] uppercase tracking-[2px] text-white/50">
             {live?.liveCount === 1 ? "Visitor" : "Visitors"} right now
           </div>
         </div>
+        <div className="pointer-events-none absolute bottom-4 right-5 text-[10px] uppercase tracking-[2px] text-white/30">
+          Drag to rotate
+        </div>
+        <div className="pointer-events-none absolute right-5 top-5 hidden w-56 flex-col gap-3 md:flex">
+          <div>
+            <div className="text-[10px] uppercase tracking-[2px] text-white/40">Active locations</div>
+            <ul className="mt-1.5 flex flex-col gap-1 text-[13px] text-white/85">
+              {live?.liveVisitors.slice(0, 6).map((v, i) => (
+                <li key={i} className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 truncate">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+                    {[v.city, v.country].filter(Boolean).join(", ") || "Unknown"}
+                  </span>
+                  <span className="truncate text-[11px] text-white/40">{v.path}</span>
+                </li>
+              ))}
+              {live && live.liveVisitors.length === 0 && (
+                <li className="text-white/35">No one on the site right now.</li>
+              )}
+            </ul>
+          </div>
+          {live && live.topPages.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-[2px] text-white/40">Top pages today</div>
+              <ul className="mt-1.5 flex flex-col gap-1 text-[13px] text-white/85">
+                {live.topPages.slice(0, 4).map(([p, n]) => (
+                  <li key={p} className="flex justify-between gap-2">
+                    <span className="truncate">{p}</span>
+                    <span className="text-white/40">{n}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       </div>
-      <div className="flex flex-col gap-4">
-        <div className="rounded-xl bg-white p-4 shadow-sm">
-          <div className="text-[12px] text-gray-500">Sessions today</div>
-          <div className="text-2xl font-semibold">{live?.sessionsToday ?? "—"}</div>
-        </div>
-        <div className="rounded-xl bg-white p-4 shadow-sm">
-          <div className="text-[12px] text-gray-500">Page views today</div>
-          <div className="text-2xl font-semibold">{live?.viewsToday ?? "—"}</div>
-        </div>
-        <div className="rounded-xl bg-white p-4 shadow-sm">
-          <div className="text-[12px] font-semibold text-gray-600">Active visitor locations</div>
-          <ul className="mt-2 flex flex-col gap-1 text-sm">
-            {live?.liveVisitors.slice(0, 8).map((v, i) => (
-              <li key={i} className="flex justify-between">
-                <span>{[v.city, v.country].filter(Boolean).join(", ") || "Unknown"}</span>
-                <span className="text-gray-400">{v.path}</span>
-              </li>
-            ))}
-            {live && live.liveVisitors.length === 0 && (
-              <li className="text-gray-400">No one on the site right now.</li>
-            )}
-          </ul>
-        </div>
-        <div className="rounded-xl bg-white p-4 shadow-sm">
-          <div className="text-[12px] font-semibold text-gray-600">Top pages today</div>
-          <ul className="mt-2 flex flex-col gap-1 text-sm">
-            {live?.topPages.map(([p, n]) => (
-              <li key={p} className="flex justify-between">
-                <span className="truncate">{p}</span>
-                <span className="ml-2 text-gray-400">{n}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+      <div className="grid grid-cols-2 gap-px border-t border-white/10 bg-white/10 md:grid-cols-4">
+        {(
+          [
+            ["Visitors right now", live ? String(live.liveCount) : "—"],
+            ["Total sales today", live ? fmt(live.salesToday) : "—"],
+            ["Sessions today", live ? String(live.sessionsToday) : "—"],
+            ["Orders today", live ? String(live.ordersToday) : "—"],
+          ] as const
+        ).map(([k, v]) => (
+          <div key={k} className="bg-[#0b0e14] px-5 py-4">
+            <div className="text-[11px] text-white/45">{k}</div>
+            <div className="mt-1 text-2xl font-semibold tabular-nums text-white">{v}</div>
+          </div>
+        ))}
       </div>
     </div>
   );

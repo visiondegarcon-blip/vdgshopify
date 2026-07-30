@@ -32,7 +32,7 @@ function Card({ title, children, hint }: { title: string; hint?: string; childre
 }
 
 export default function OptimizationPage() {
-  const [range, setRange] = useState<keyof typeof RANGES>("30d");
+  const [range, setRange] = useState<keyof typeof RANGES>("All");
   const [d, setD] = useState<Opt | null>(null);
 
   useEffect(() => {
@@ -56,6 +56,12 @@ export default function OptimizationPage() {
           ))}
         </div>
       </div>
+
+      <p className="mt-1 text-[11px] text-gray-400">
+        Order-based cards (sellers, pairs, order heatmap) include your full Shopify history.
+        Visitor-based cards (sessions, funnel, journeys, geo) come from the new site&apos;s own
+        tracking, which started 30 Jul 2026 — they fill up as traffic arrives.
+      </p>
 
       {!d && <p className="mt-6 text-sm text-gray-500">Analysing…</p>}
 
@@ -179,14 +185,18 @@ export default function OptimizationPage() {
             </Card>
           </div>
 
-          <Card title="Most common journeys" hint="first three pages per session">
-            <ul className="flex flex-col gap-1.5 font-mono text-[12px]">
-              {d.clickPaths.map(([p, n]) => (
-                <li key={p} className="flex justify-between"><span className="truncate">{p}</span><span className="ml-3 text-gray-500">{n}×</span></li>
-              ))}
-              {d.clickPaths.length === 0 && <li className="text-gray-400">No journeys recorded yet.</li>}
-            </ul>
-          </Card>
+          <a
+            href="/admin/optimization/journeys"
+            className="mt-4 flex items-center justify-between rounded-xl bg-[#1a1a1a] p-5 text-white shadow-sm transition hover:bg-black"
+          >
+            <div>
+              <div className="text-sm font-semibold">Customer journeys</div>
+              <div className="mt-0.5 text-[12px] text-white/60">
+                See how visitors flow through your store, step by step — visualised
+              </div>
+            </div>
+            <span className="text-xl">→</span>
+          </a>
 
           <Card title="Orders by hour (UTC)" hint="rows are days, columns are hours — darker = more orders">
             <div className="flex flex-col gap-[3px]">

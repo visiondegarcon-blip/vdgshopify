@@ -1,16 +1,32 @@
 import Image from "next/image";
 import Link from "next/link";
+import { getSettings, jsonSetting } from "@/lib/theme";
 
-const nav = [
-  { label: "VDG Globe™‎", href: "https://globe.visiondegarcon.com", external: true },
-  { label: "Store‎", href: "/store" },
-  { label: "About Us‎", href: "/about-us" },
-  { label: "Our Impact", href: "https://impact.visiondegarcon.fr/", external: true },
-  { label: "Work For VDG‎", href: "/work-for-vdg" },
-  { label: "Policies‎", href: "/policy" },
-];
+export const revalidate = 60;
 
-export default function Home() {
+const NAV_DEFAULTS = {
+  globe: "VDG Globe™‎",
+  store: "Store‎",
+  about: "About Us‎",
+  impact: "Our Impact",
+  work: "Work For VDG‎",
+  policies: "Policies‎",
+};
+
+export default async function Home() {
+  const settings = await getSettings();
+  const { navLabels } = jsonSetting<{ navLabels: typeof NAV_DEFAULTS }>(settings, "content_home", {
+    navLabels: NAV_DEFAULTS,
+  });
+  const labels = { ...NAV_DEFAULTS, ...navLabels };
+  const nav = [
+    { label: labels.globe, href: "https://globe.visiondegarcon.com", external: true },
+    { label: labels.store, href: "/store" },
+    { label: labels.about, href: "/about-us" },
+    { label: labels.impact, href: "https://impact.visiondegarcon.fr/", external: true },
+    { label: labels.work, href: "/work-for-vdg" },
+    { label: labels.policies, href: "/policy" },
+  ];
   return (
     <main className="relative min-h-screen w-full overflow-hidden">
       <Image

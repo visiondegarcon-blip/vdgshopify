@@ -55,7 +55,7 @@ const JOBS = [
 
 export default function WorkForVdgPage() {
   return (
-    <main className="min-h-screen bg-white">
+    <main className="t-surface min-h-screen">
       <Header showCart={false} />
       <div className="mx-auto max-w-3xl px-4 pb-28">
         <h1 className="text-center font-oswald text-2xl font-bold tracking-widest">WORK FOR VDG</h1>
@@ -70,7 +70,7 @@ export default function WorkForVdgPage() {
                 href={j.apply}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-4 inline-block bg-black px-6 py-2 text-sm text-white"
+                className="t-btn mt-4 inline-block px-6 py-2 text-sm"
               >
                 APPLY
               </a>

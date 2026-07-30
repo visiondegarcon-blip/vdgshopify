@@ -54,7 +54,7 @@ export default function AccountPage() {
   };
 
   return (
-    <main className="min-h-screen bg-white">
+    <main className="t-surface min-h-screen">
       <Header />
       <div className="mx-auto max-w-md px-4 pb-28">
         <h1 className="font-oswald text-xl font-bold">Account</h1>
@@ -139,7 +139,7 @@ export default function AccountPage() {
             <button
               type="submit"
               disabled={loading}
-              className="bg-black py-2 text-sm text-white disabled:opacity-60"
+              className="t-btn py-2 text-sm disabled:opacity-60"
             >
               {loading ? "…" : mode === "signin" ? "Sign In" : "Create Account"}
             </button>

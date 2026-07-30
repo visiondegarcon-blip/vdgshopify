@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
-import { Inconsolata, Platypi, Oswald } from "next/font/google";
+import { Inconsolata, Platypi, Oswald, Gochi_Hand, Orbitron } from "next/font/google";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart";
 import MusicPlayer from "@/components/MusicPlayer";
 import Tracker from "@/components/Tracker";
+import ThemePreview from "@/components/ThemePreview";
+import { getActiveTheme, themeStyle } from "@/lib/theme";
 
 const inconsolata = Inconsolata({ subsets: ["latin"], variable: "--font-inconsolata" });
 const platypi = Platypi({ subsets: ["latin"], variable: "--font-platypi" });
 const oswald = Oswald({ subsets: ["latin"], variable: "--font-oswald" });
+const gochi = Gochi_Hand({ weight: "400", subsets: ["latin"], variable: "--font-gochi" });
+const orbitron = Orbitron({ subsets: ["latin"], variable: "--font-orbitron" });
 
 export const metadata: Metadata = {
   title: "Vision De Garçon | No Congo No Tesla",
@@ -15,17 +19,20 @@ export const metadata: Metadata = {
     "Vision De Garçon (VDG) — a humanitarian platform and clothing brand. A voice for the unspoken.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const theme = await getActiveTheme();
   return (
     <html
       lang="en"
-      className={`${inconsolata.variable} ${platypi.variable} ${oswald.variable} h-full antialiased`}
+      className={`${inconsolata.variable} ${platypi.variable} ${oswald.variable} ${gochi.variable} ${orbitron.variable} h-full antialiased`}
+      style={themeStyle(theme)}
     >
-      <body className="min-h-full flex flex-col">
+      <body className={`min-h-full flex flex-col vdg-texture-${theme.texture}`}>
         <CartProvider>
           {children}
           <MusicPlayer />
           <Tracker />
+          <ThemePreview />
         </CartProvider>
       </body>
     </html>

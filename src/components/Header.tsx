@@ -47,7 +47,7 @@ export default function Header({
   return (
     <header className="w-full">
       <div className={dark ? "bg-black text-white" : ""}>
-        <div className="flex h-[52px] items-center justify-center bg-black text-center text-xs tracking-[2px] text-white">
+        <div className="t-banner flex h-[52px] items-center justify-center text-center text-xs tracking-[2px]">
           {banner}
         </div>
         <div className="flex flex-col items-center pt-4 pb-2">
@@ -68,7 +68,7 @@ export default function Header({
           {showCart && (
             <div className="mt-2 flex items-center gap-4 text-sm font-bold">
               <Link href="/cart">
-                Cart<span className="ml-0.5 bg-black px-1 text-white">{count}</span>
+                Cart<span className="t-btn ml-0.5 px-1">{count}</span>
               </Link>
               <Link href="/account" className="text-xs font-normal text-gray-500 hover:text-black">
                 Account

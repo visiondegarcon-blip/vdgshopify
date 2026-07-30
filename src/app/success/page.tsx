@@ -11,7 +11,7 @@ export default function SuccessPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <main className="min-h-screen bg-white">
+    <main className="t-surface min-h-screen">
       <Header />
       <div className="mx-auto max-w-xl px-4 pb-28 text-center">
         <h1 className="font-oswald text-2xl font-bold">Merci! Order Confirmed ✓</h1>
@@ -19,7 +19,7 @@ export default function SuccessPage() {
           Thank you for supporting the vision. A receipt has been emailed to you.
           <br />A portion of profits goes towards charities directly helping Congo.
         </p>
-        <Link href="/store" className="mt-8 inline-block bg-black px-6 py-3 text-sm text-white">
+        <Link href="/store" className="t-btn mt-8 inline-block px-6 py-3 text-sm">
           Keep Shopping
         </Link>
       </div>

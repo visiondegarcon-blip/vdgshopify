@@ -13,12 +13,45 @@
   --font-oswald: var(--font-oswald);
 }
 
-/* Original theme: Platypi for body copy/prices, Inconsolata for titles/buttons */
+/* Theme tokens — set per-theme on <html> by the root layout; these are the
+   VDG Classic defaults so nothing changes if the fetch ever fails. */
+:root {
+  --vdg-bg: #ffffff;
+  --vdg-fg: #171717;
+  --vdg-accent: #fe0000;
+  --vdg-badge: #a51b1b;
+  --vdg-banner-bg: #000000;
+  --vdg-banner-fg: #ffffff;
+  --vdg-btn-bg: #000000;
+  --vdg-btn-fg: #ffffff;
+  --vdg-font-head: var(--font-inconsolata);
+  --vdg-font-body: var(--font-platypi);
+  --vdg-radius: 0px;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-platypi), serif;
+  background: var(--vdg-bg);
+  color: var(--vdg-fg);
+  font-family: var(--vdg-font-body), serif;
   font-size: 12px;
+}
+
+/* themed building blocks used across the storefront */
+.t-banner { background: var(--vdg-banner-bg); color: var(--vdg-banner-fg); }
+.t-btn { background: var(--vdg-btn-bg); color: var(--vdg-btn-fg); border-radius: var(--vdg-radius); }
+.t-badge { background: var(--vdg-badge); color: #fff; border-radius: var(--vdg-radius); }
+.t-accent { color: var(--vdg-accent); }
+.t-head { font-family: var(--vdg-font-head), monospace; }
+.t-surface { background: var(--vdg-bg); color: var(--vdg-fg); }
+
+.vdg-texture-paper {
+  background-image: radial-gradient(#00000010 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.vdg-texture-grid {
+  background-image: linear-gradient(#ffffff0a 1px, transparent 1px),
+    linear-gradient(90deg, #ffffff0a 1px, transparent 1px);
+  background-size: 32px 32px;
 }
 
 .font-platypi {

@@ -35,7 +35,7 @@ export default function CartPage() {
   };
 
   return (
-    <main className="min-h-screen bg-white">
+    <main className="t-surface min-h-screen">
       <Header />
       <div className="mx-auto max-w-2xl px-4 pb-28">
         <h1 className="font-oswald text-xl font-bold">Cart</h1>
@@ -85,7 +85,7 @@ export default function CartPage() {
             <button
               onClick={checkout}
               disabled={loading}
-              className="mt-4 w-full bg-black py-3 text-sm text-white disabled:opacity-60"
+              className="t-btn mt-4 w-full py-3 text-sm disabled:opacity-60"
             >
               {loading ? "Redirecting…" : "Checkout"}
             </button>

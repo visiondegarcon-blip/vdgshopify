@@ -66,7 +66,7 @@ const SECTIONS: { title: string; items: string[] }[] = [
 
 export default function PolicyPage() {
   return (
-    <main className="min-h-screen bg-white">
+    <main className="t-surface min-h-screen">
       <Header showCart={false} />
       <div className="mx-auto max-w-2xl px-4 pb-28">
         {SECTIONS.map((s) => (

@@ -8,7 +8,7 @@ export const revalidate = 60;
 export default async function StorePage() {
   const products = await fetchActiveProducts();
   return (
-    <main className="min-h-screen bg-white">
+    <main className="t-surface min-h-screen">
       <Header />
       <div className="px-4 pb-24">
         <Link href="/" className="ml-1 inline-block text-base underline-offset-2 hover:underline">
@@ -23,7 +23,7 @@ export default async function StorePage() {
             return (
               <Link key={p.id} href={`/products/${p.handle}`} className="group relative">
                 {soldOut && (
-                  <span className="absolute left-2 top-2 z-10 bg-[#a51b1b] px-2 py-1 text-[11px] font-bold text-white">
+                  <span className="t-badge absolute left-2 top-2 z-10 px-2 py-1 text-[11px] font-bold">
                     Sold Out
                   </span>
                 )}

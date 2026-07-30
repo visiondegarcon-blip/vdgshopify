@@ -43,10 +43,13 @@ L
 export default function ProductClient({
   product,
   nextHandle,
+  accordionOverrides,
 }: {
   product: Product;
   nextHandle: string;
+  accordionOverrides?: { title: string; body: string }[];
 }) {
+  const accordions = accordionOverrides ?? ACCORDIONS;
   const { add } = useCart();
   const inStock = product.variants.filter((v) => v.stock > 0);
   const [variantId, setVariantId] = useState<number>(
@@ -94,11 +97,11 @@ export default function ProductClient({
 
       <div>
         {onSale && (
-          <span className="mb-2 inline-block bg-black px-2 py-1 text-[11px] font-bold text-white">
+          <span className="t-btn mb-2 inline-block px-2 py-1 text-[11px] font-bold">
             On Sale
           </span>
         )}
-        <h1 className="font-mono text-[21px] font-bold tracking-wide">{product.title}</h1>
+        <h1 className="t-head text-[21px] font-bold tracking-wide">{product.title}</h1>
         <div
           className="prose-desc mt-3 text-xs leading-relaxed"
           dangerouslySetInnerHTML={{ __html: product.description_html }}
@@ -153,11 +156,11 @@ export default function ProductClient({
           <button
             onClick={addToCart}
             disabled={soldOut || !variant || variant.stock <= 0}
-            className="bg-black px-4 py-2 font-mono text-sm text-white disabled:cursor-not-allowed"
+            className="t-btn px-4 py-2 font-mono text-sm disabled:cursor-not-allowed"
           >
             {soldOut ? "Sold Out" : "Add To Cart"}
           </button>
-          <Link href="/store" className="bg-black px-4 py-2 font-mono text-sm text-white">
+          <Link href="/store" className="t-btn px-4 py-2 font-mono text-sm">
             Keep Shopping
           </Link>
         </div>
@@ -165,14 +168,14 @@ export default function ProductClient({
         {added && (
           <div className="mt-4 flex items-center justify-between border border-black px-4 py-3">
             <span className="font-mono text-sm">✓ Added to cart</span>
-            <Link href="/cart" className="bg-black px-4 py-2 font-mono text-sm text-white">
+            <Link href="/cart" className="t-btn px-4 py-2 font-mono text-sm">
               View Cart
             </Link>
           </div>
         )}
 
         <div className="mt-8 flex flex-col gap-3">
-          {ACCORDIONS.map((a) => (
+          {accordions.map((a) => (
             <details key={a.title} className="border border-gray-200 px-4 py-3">
               <summary className="cursor-pointer select-none font-mono text-sm">{a.title}</summary>
               <div className="whitespace-pre-line pt-3 text-xs leading-relaxed text-gray-700">{a.body}</div>

@@ -239,7 +239,17 @@ export async function POST(req: NextRequest) {
 
       case "update_settings": {
         const { settings } = body; // { key: value }
-        const allowed = ["banner_text", "shipping_free_label", "shipping_intl_label", "shipping_intl_cents"];
+        const allowed = [
+          "banner_text",
+          "shipping_free_label",
+          "shipping_intl_label",
+          "shipping_intl_cents",
+          "active_theme_id",
+          "content_home",
+          "content_product",
+          "lock_config",
+          "popup_config",
+        ];
         for (const [key, value] of Object.entries(settings ?? {})) {
           if (!allowed.includes(key)) continue;
           const { error } = await db
@@ -247,6 +257,48 @@ export async function POST(req: NextRequest) {
             .upsert({ key, value: String(value), updated_at: new Date().toISOString() });
           if (error) throw error;
         }
+        return NextResponse.json({ ok: true });
+      }
+
+      case "list_themes": {
+        const { data } = await db.from("themes").select("*").order("id");
+        const { data: active } = await db.from("site_settings").select("value").eq("key", "active_theme_id").maybeSingle();
+        return NextResponse.json({ themes: data ?? [], activeId: active?.value ?? null });
+      }
+
+      case "save_snapshot": {
+        const { name } = body;
+        const { data: settings } = await db.from("site_settings").select("key,value");
+        const payload = { settings: Object.fromEntries((settings ?? []).map((s) => [s.key, s.value])) };
+        const { data, error } = await db
+          .from("design_snapshots")
+          .insert({ name: String(name || "Untitled design"), payload })
+          .select()
+          .single();
+        if (error) throw error;
+        return NextResponse.json({ snapshot: data });
+      }
+
+      case "list_snapshots": {
+        const { data } = await db
+          .from("design_snapshots")
+          .select("id,name,created_at")
+          .order("created_at", { ascending: false });
+        return NextResponse.json({ snapshots: data ?? [] });
+      }
+
+      case "restore_snapshot": {
+        const { id } = body;
+        const { data } = await db.from("design_snapshots").select("payload").eq("id", id).single();
+        const settings = (data?.payload as { settings?: Record<string, string> })?.settings ?? {};
+        for (const [key, value] of Object.entries(settings)) {
+          await db.from("site_settings").upsert({ key, value, updated_at: new Date().toISOString() });
+        }
+        return NextResponse.json({ ok: true });
+      }
+
+      case "delete_snapshot": {
+        await db.from("design_snapshots").delete().eq("id", body.id);
         return NextResponse.json({ ok: true });
       }
 

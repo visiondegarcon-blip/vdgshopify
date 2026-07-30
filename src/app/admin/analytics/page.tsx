@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { adminCall, fmt } from "../adminApi";
+import LiveView from "./LiveView";
 
 type Order = {
   id: number; total_cents: number; status: string; created_at: string; email: string;
@@ -12,6 +13,7 @@ const RANGES = { "7d": 7, "30d": 30, "90d": 90, All: 3650 } as const;
 export default function AnalyticsPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [range, setRange] = useState<keyof typeof RANGES>("30d");
+  const [tab, setTab] = useState<"overview" | "live">("overview");
 
   useEffect(() => {
     adminCall<{ orders: Order[] }>("list_orders").then((r) => setOrders(r.orders));
@@ -62,19 +64,41 @@ export default function AnalyticsPage() {
   return (
     <div>
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-[#1a1a1a]">Analytics</h1>
-        <div className="flex gap-1 rounded-lg border border-gray-300 bg-white p-0.5 text-xs">
-          {(Object.keys(RANGES) as (keyof typeof RANGES)[]).map((r) => (
-            <button
-              key={r}
-              onClick={() => setRange(r)}
-              className={`rounded-md px-2.5 py-1 ${range === r ? "bg-[#1a1a1a] text-white" : ""}`}
-            >
-              {r}
+        <div className="flex items-center gap-4">
+          <h1 className="text-xl font-semibold text-[#1a1a1a]">Analytics</h1>
+          <div className="flex gap-1 rounded-lg border border-gray-300 bg-white p-0.5 text-xs">
+            <button onClick={() => setTab("overview")} className={`rounded-md px-2.5 py-1 ${tab === "overview" ? "bg-[#1a1a1a] text-white" : ""}`}>
+              Overview
             </button>
-          ))}
+            <button onClick={() => setTab("live")} className={`rounded-md px-2.5 py-1 ${tab === "live" ? "bg-[#1a1a1a] text-white" : ""}`}>
+              ● Live view
+            </button>
+          </div>
         </div>
+        {tab === "overview" && (
+          <div className="flex gap-1 rounded-lg border border-gray-300 bg-white p-0.5 text-xs">
+            {(Object.keys(RANGES) as (keyof typeof RANGES)[]).map((r) => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                className={`rounded-md px-2.5 py-1 ${range === r ? "bg-[#1a1a1a] text-white" : ""}`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {tab === "live" && (
+        <div className="mt-4">
+          <LiveView />
+        </div>
+      )}
+
+      {tab === "overview" && (
+      <>
+
 
       <div className="mt-4 grid gap-4 md:grid-cols-4">
         {[
@@ -134,9 +158,10 @@ export default function AnalyticsPage() {
       </div>
 
       <p className="mt-3 text-xs text-gray-500">
-        Sales data comes from real orders in your database. For traffic analytics (sessions, conversion,
-        visitors), enable Vercel Analytics in the Vercel dashboard — one click, no code needed.
+        Sales data comes from real orders in your database; traffic data is first-party (no cookies).
       </p>
+      </>
+      )}
     </div>
   );
 }

@@ -260,6 +260,208 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
+      case "finance_overview": {
+        const days = Math.min(Number(body.days) || 90, 3650);
+        const since = Math.floor((Date.now() - days * 864e5) / 1000);
+        const StripeLib = (await import("stripe")).default;
+        const stripe = new StripeLib(process.env.STRIPE_SECRET_KEY!);
+        let gross = 0, fees = 0, net = 0, refunds = 0, chargeCount = 0;
+        const txns: { ts: number; type: string; amount: number; fee: number; net: number; desc: string }[] = [];
+        for await (const t of stripe.balanceTransactions.list({ created: { gte: since }, limit: 100 })) {
+          txns.push({ ts: t.created, type: t.type, amount: t.amount, fee: t.fee, net: t.net, desc: t.description ?? "" });
+          if (t.type === "charge" || t.type === "payment") {
+            gross += t.amount; fees += t.fee; net += t.net; chargeCount++;
+          } else if (t.type.startsWith("refund")) {
+            refunds += Math.abs(t.amount);
+          }
+          if (txns.length >= 1000) break;
+        }
+        const payouts: { id: string; amount: number; arrival: number; status: string }[] = [];
+        for await (const p of stripe.payouts.list({ limit: 10 })) {
+          payouts.push({ id: p.id, amount: p.amount, arrival: p.arrival_date, status: p.status });
+          if (payouts.length >= 10) break;
+        }
+        return NextResponse.json({ gross, fees, net, refunds, chargeCount, payouts, txns: txns.slice(0, 200) });
+      }
+
+      case "finance_eofy": {
+        // AU financial year: 1 Jul (year-1) .. 30 Jun (year)
+        const fy = Number(body.fy) || new Date().getFullYear();
+        const start = new Date(Date.UTC(fy - 1, 6, 1));
+        const end = new Date(Date.UTC(fy, 6, 1));
+        const { data: orders } = await db
+          .from("orders")
+          .select("total_cents,discount_cents,currency,status,created_at,shipping_address,source")
+          .gte("created_at", start.toISOString())
+          .lt("created_at", end.toISOString());
+        const paid = (orders ?? []).filter((o) => o.status === "paid");
+        const monthly: Record<string, { gross: number; orders: number }> = {};
+        let gross = 0, discounts = 0, auGross = 0;
+        for (const o of paid) {
+          gross += o.total_cents;
+          discounts += o.discount_cents ?? 0;
+          const country = (o.shipping_address as { country?: string } | null)?.country;
+          if (!country || country === "AU") auGross += o.total_cents;
+          const m = o.created_at.slice(0, 7);
+          monthly[m] = { gross: (monthly[m]?.gross ?? 0) + o.total_cents, orders: (monthly[m]?.orders ?? 0) + 1 };
+        }
+        // Stripe fees for the same window (best effort)
+        let fees = 0;
+        try {
+          const StripeLib = (await import("stripe")).default;
+          const stripe = new StripeLib(process.env.STRIPE_SECRET_KEY!);
+          for await (const t of stripe.balanceTransactions.list({
+            created: { gte: Math.floor(start.getTime() / 1000), lt: Math.floor(end.getTime() / 1000) },
+            limit: 100,
+          })) {
+            if (t.type === "charge" || t.type === "payment") fees += t.fee;
+          }
+        } catch {}
+        const gstEstimate = Math.round(auGross / 11);
+        return NextResponse.json({
+          fy, start: start.toISOString(), end: end.toISOString(),
+          gross, discounts, fees, net: gross - fees, auGross, gstEstimate,
+          orderCount: paid.length, monthly,
+        });
+      }
+
+      case "export_orders_csv": {
+        const { data } = await db
+          .from("orders")
+          .select("*, order_items(product_title,variant_title,quantity,unit_price_cents)")
+          .order("created_at");
+        const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+        const lines = [
+          "order_id,date,email,name,status,fulfillment,source,total_aud,discount_aud,country,items",
+        ];
+        for (const o of data ?? []) {
+          const items = (o.order_items as { product_title: string; variant_title: string; quantity: number }[])
+            .map((i) => `${i.quantity}x ${i.product_title} (${i.variant_title})`)
+            .join("; ");
+          lines.push(
+            [
+              o.id, o.created_at, esc(o.email), esc(o.shipping_name), o.status,
+              o.fulfillment_status ?? "", o.source,
+              (o.total_cents / 100).toFixed(2), ((o.discount_cents ?? 0) / 100).toFixed(2),
+              esc((o.shipping_address as { country?: string } | null)?.country), esc(items),
+            ].join(",")
+          );
+        }
+        return NextResponse.json({ csv: lines.join("\n") });
+      }
+
+      case "live_view": {
+        const fiveMin = new Date(Date.now() - 5 * 6e4).toISOString();
+        const dayStart = new Date();
+        dayStart.setHours(0, 0, 0, 0);
+        const { data: recent } = await db
+          .from("events")
+          .select("session_id,country,city,path,ts,event")
+          .gte("ts", fiveMin)
+          .order("ts", { ascending: false })
+          .limit(2000);
+        const live = new Map<string, { country: string | null; city: string | null; path: string | null }>();
+        for (const e of recent ?? []) {
+          if (e.event !== "page_view") continue;
+          if (!live.has(e.session_id)) live.set(e.session_id, { country: e.country, city: e.city, path: e.path });
+        }
+        const { data: today } = await db
+          .from("events")
+          .select("session_id,event,path")
+          .gte("ts", dayStart.toISOString())
+          .limit(50000);
+        const sessionsToday = new Set<string>();
+        let viewsToday = 0;
+        const pages = new Map<string, number>();
+        for (const e of today ?? []) {
+          if (e.event === "page_view") {
+            sessionsToday.add(e.session_id);
+            viewsToday++;
+            pages.set(e.path ?? "?", (pages.get(e.path ?? "?") ?? 0) + 1);
+          }
+        }
+        return NextResponse.json({
+          liveVisitors: [...live.values()],
+          liveCount: live.size,
+          sessionsToday: sessionsToday.size,
+          viewsToday,
+          topPages: [...pages.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6),
+        });
+      }
+
+      case "list_discounts": {
+        // refresh redemption counts from Stripe so the table is truthful
+        const { data: codes } = await db.from("discount_codes").select("*").order("created_at", { ascending: false });
+        const stripeKey = process.env.STRIPE_SECRET_KEY;
+        if (stripeKey && (codes ?? []).length) {
+          const StripeLib = (await import("stripe")).default;
+          const stripe = new StripeLib(stripeKey);
+          for (const c of codes ?? []) {
+            try {
+              const promo = await stripe.promotionCodes.retrieve(c.stripe_promo_id);
+              if (promo.times_redeemed !== c.times_redeemed || promo.active !== c.active) {
+                await db
+                  .from("discount_codes")
+                  .update({ times_redeemed: promo.times_redeemed, active: promo.active })
+                  .eq("id", c.id);
+                c.times_redeemed = promo.times_redeemed;
+                c.active = promo.active;
+              }
+            } catch {}
+          }
+        }
+        return NextResponse.json({ discounts: codes ?? [] });
+      }
+
+      case "create_discount": {
+        const { code, kind, value, maxRedemptions, expiresAt } = body as {
+          code: string; kind: "percent" | "amount"; value: number;
+          maxRedemptions?: number; expiresAt?: string;
+        };
+        const clean = String(code).toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 20);
+        if (!clean || !value || value <= 0) throw new Error("Code and a positive value are required");
+        if (kind === "percent" && value > 100) throw new Error("Percent must be 1-100");
+        const StripeLib = (await import("stripe")).default;
+        const stripe = new StripeLib(process.env.STRIPE_SECRET_KEY!);
+        const coupon = await stripe.coupons.create(
+          kind === "percent"
+            ? { percent_off: value, duration: "once", name: clean }
+            : { amount_off: Math.round(value), currency: "aud", duration: "once", name: clean }
+        );
+        const promo = await stripe.promotionCodes.create({
+          promotion: { type: "coupon", coupon: coupon.id },
+          code: clean,
+          ...(maxRedemptions ? { max_redemptions: Math.floor(maxRedemptions) } : {}),
+          ...(expiresAt ? { expires_at: Math.floor(new Date(expiresAt).getTime() / 1000) } : {}),
+        });
+        const { data, error } = await db
+          .from("discount_codes")
+          .insert({
+            code: clean,
+            stripe_coupon_id: coupon.id,
+            stripe_promo_id: promo.id,
+            percent_off: kind === "percent" ? value : null,
+            amount_off_cents: kind === "amount" ? Math.round(value) : null,
+            max_redemptions: maxRedemptions ?? null,
+            expires_at: expiresAt || null,
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        return NextResponse.json({ discount: data });
+      }
+
+      case "toggle_discount": {
+        const { id, active } = body;
+        const { data: row } = await db.from("discount_codes").select("stripe_promo_id").eq("id", id).single();
+        if (!row) throw new Error("Not found");
+        const StripeLib = (await import("stripe")).default;
+        const stripe = new StripeLib(process.env.STRIPE_SECRET_KEY!);
+        await stripe.promotionCodes.update(row.stripe_promo_id, { active: Boolean(active) });
+        await db.from("discount_codes").update({ active: Boolean(active) }).eq("id", id);
+        return NextResponse.json({ ok: true });
+      }
+
       case "list_themes": {
         const { data } = await db.from("themes").select("*").order("id");
         const { data: active } = await db.from("site_settings").select("value").eq("key", "active_theme_id").maybeSingle();

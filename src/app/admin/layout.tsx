@@ -15,7 +15,11 @@ const NAV: { label: string; href: string; icon: string }[] = [
   { label: "Orders", href: "/admin/orders", icon: "▤" },
   { label: "Products", href: "/admin/products", icon: "⬡" },
   { label: "Customers", href: "/admin/customers", icon: "◉" },
+  { label: "Discounts", href: "/admin/discounts", icon: "%" },
+  { label: "Marketing", href: "/admin/marketing", icon: "◍" },
   { label: "Analytics", href: "/admin/analytics", icon: "▙" },
+  { label: "Finance", href: "/admin/finance", icon: "$" },
+  { label: "Optimization", href: "/admin/optimization", icon: "◮" },
   { label: "Settings", href: "/admin/settings", icon: "⚙" },
 ];
 

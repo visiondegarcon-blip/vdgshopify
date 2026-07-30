@@ -260,6 +260,234 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
+      case "optimization": {
+        const days = Math.min(Number(body.days) || 30, 180);
+        const cutoff = new Date(Date.now() - days * 864e5).toISOString();
+        const prevCutoff = new Date(Date.now() - 2 * days * 864e5).toISOString();
+        const { data: events } = await db
+          .from("events")
+          .select("session_id,event,path,country,city,referrer,ts,meta")
+          .gte("ts", prevCutoff)
+          .order("ts")
+          .limit(100000);
+        const { data: orders } = await db
+          .from("orders")
+          .select("created_at,status,total_cents, order_items(product_title,quantity)")
+          .eq("status", "paid");
+
+        const cur = (events ?? []).filter((e) => e.ts >= cutoff);
+        const prev = (events ?? []).filter((e) => e.ts < cutoff);
+
+        // sessions
+        const bySession = new Map<string, typeof cur>();
+        for (const e of cur) {
+          if (!bySession.has(e.session_id)) bySession.set(e.session_id, []);
+          bySession.get(e.session_id)!.push(e);
+        }
+
+        // avg session duration (sessions with 2+ events)
+        let durSum = 0, durN = 0;
+        for (const evs of bySession.values()) {
+          if (evs.length < 2) continue;
+          const ts = evs.map((e) => new Date(e.ts).getTime());
+          durSum += Math.max(...ts) - Math.min(...ts);
+          durN++;
+        }
+
+        // funnel
+        let carted = 0, checkout = 0, purchased = 0;
+        for (const evs of bySession.values()) {
+          const kinds = new Set(evs.map((e) => e.event));
+          if (kinds.has("add_to_cart")) carted++;
+          if (kinds.has("checkout_started")) checkout++;
+          if (kinds.has("purchase")) purchased++;
+        }
+
+        // geo trends: sessions per country now vs previous window
+        const geoCount = (list: typeof cur) => {
+          const m = new Map<string, Set<string>>();
+          for (const e of list) {
+            if (e.event !== "page_view" || !e.country) continue;
+            (m.get(e.country) ?? m.set(e.country, new Set()).get(e.country)!).add(e.session_id);
+          }
+          return m;
+        };
+        const geoNow = geoCount(cur), geoPrev = geoCount(prev);
+        const trending = [...geoNow.entries()]
+          .map(([c, s]) => ({ country: c, sessions: s.size, prev: geoPrev.get(c)?.size ?? 0 }))
+          .sort((a, b) => b.sessions - a.sessions)
+          .slice(0, 8);
+        const cities = new Map<string, number>();
+        for (const e of cur) if (e.event === "page_view" && e.city) cities.set(e.city, (cities.get(e.city) ?? 0) + 1);
+
+        // referrers grouped by host bucket
+        const refBuckets = new Map<string, number>();
+        for (const evs of bySession.values()) {
+          const first = evs.find((e) => e.event === "page_view");
+          let bucket = "Direct";
+          const r = first?.referrer ?? "";
+          if (r) {
+            try {
+              const host = new URL(r).hostname.replace(/^www\./, "");
+              if (host.includes("instagram")) bucket = "Instagram";
+              else if (host.includes("tiktok")) bucket = "TikTok";
+              else if (host.includes("google")) bucket = "Google";
+              else if (host.includes("facebook")) bucket = "Facebook";
+              else if (host.includes("vdg-store") || host.includes("visiondegarcon")) bucket = "Internal";
+              else bucket = host;
+            } catch { bucket = "Other"; }
+          }
+          refBuckets.set(bucket, (refBuckets.get(bucket) ?? 0) + 1);
+        }
+
+        // click paths: first 3 page_view paths per session
+        const paths = new Map<string, number>();
+        for (const evs of bySession.values()) {
+          const seq = evs.filter((e) => e.event === "page_view").slice(0, 3).map((e) => e.path).join(" → ");
+          if (seq) paths.set(seq, (paths.get(seq) ?? 0) + 1);
+        }
+
+        // product views + sold-out demand
+        const views = new Map<string, number>();
+        const soldOutViews = new Map<string, number>();
+        for (const e of cur) {
+          if (e.event !== "product_view") continue;
+          const m = e.meta as { handle?: string; title?: string; soldOut?: boolean };
+          const key = m.title ?? m.handle ?? "?";
+          views.set(key, (views.get(key) ?? 0) + 1);
+          if (m.soldOut) soldOutViews.set(key, (soldOutViews.get(key) ?? 0) + 1);
+        }
+
+        // sellers from all paid orders in range window (use created_at cutoff)
+        const sellers = new Map<string, number>();
+        const hourHeat = Array.from({ length: 7 }, () => Array(24).fill(0) as number[]);
+        const pairs = new Map<string, number>();
+        for (const o of orders ?? []) {
+          if (o.created_at < cutoff) continue;
+          const d = new Date(o.created_at);
+          hourHeat[d.getUTCDay()][d.getUTCHours()]++;
+          const titles = [...new Set((o.order_items ?? []).map((i) => i.product_title))].sort();
+          for (const i of o.order_items ?? []) sellers.set(i.product_title, (sellers.get(i.product_title) ?? 0) + i.quantity);
+          for (let a = 0; a < titles.length; a++)
+            for (let b = a + 1; b < titles.length; b++)
+              pairs.set(`${titles[a]} + ${titles[b]}`, (pairs.get(`${titles[a]} + ${titles[b]}`) ?? 0) + 1);
+        }
+
+        const products = [...new Set([...views.keys(), ...sellers.keys()])].map((title) => ({
+          title,
+          views: views.get(title) ?? 0,
+          sold: sellers.get(title) ?? 0,
+          conversion: (views.get(title) ?? 0) > 0 ? (sellers.get(title) ?? 0) / (views.get(title) ?? 1) : null,
+        }));
+
+        return NextResponse.json({
+          sessions: bySession.size,
+          avgSessionMs: durN ? Math.round(durSum / durN) : null,
+          funnel: { sessions: bySession.size, carted, checkout, purchased },
+          cartAbandonPct: carted ? Math.round(((carted - purchased) / carted) * 100) : null,
+          checkoutAbandonPct: checkout ? Math.round(((checkout - purchased) / checkout) * 100) : null,
+          trending,
+          cities: [...cities.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8),
+          referrers: [...refBuckets.entries()].sort((a, b) => b[1] - a[1]),
+          clickPaths: [...paths.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8),
+          products: products.sort((a, b) => b.sold - a.sold || b.views - a.views),
+          soldOutDemand: [...soldOutViews.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6),
+          pairs: [...pairs.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6),
+          hourHeat,
+        });
+      }
+
+      case "list_subscribers": {
+        const { data } = await db
+          .from("subscribers")
+          .select("id,email,phone,source,consented_at,unsubscribed_at,created_at")
+          .order("created_at", { ascending: false });
+        return NextResponse.json({ subscribers: data ?? [] });
+      }
+
+      case "import_checkout_emails": {
+        const { data: orders } = await db.from("orders").select("email").eq("status", "paid");
+        const emails = [...new Set((orders ?? []).map((o) => o.email).filter((e) => e && e.includes("@")))];
+        let added = 0;
+        for (const email of emails) {
+          const { error } = await db
+            .from("subscribers")
+            .insert({ email, source: "checkout" })
+            .select()
+            .single();
+          if (!error) added++;
+        }
+        return NextResponse.json({ added, scanned: emails.length });
+      }
+
+      case "delete_subscriber": {
+        await db.from("subscribers").delete().eq("id", body.id);
+        return NextResponse.json({ ok: true });
+      }
+
+      case "list_templates": {
+        const { data } = await db.from("email_templates").select("*").order("updated_at", { ascending: false });
+        return NextResponse.json({ templates: data ?? [] });
+      }
+
+      case "save_template": {
+        const { id, name, blocks } = body;
+        if (id) {
+          const { error } = await db
+            .from("email_templates")
+            .update({ name, blocks, updated_at: new Date().toISOString() })
+            .eq("id", id);
+          if (error) throw error;
+          return NextResponse.json({ id });
+        }
+        const { data, error } = await db.from("email_templates").insert({ name, blocks }).select().single();
+        if (error) throw error;
+        return NextResponse.json({ id: data.id });
+      }
+
+      case "delete_template": {
+        await db.from("email_templates").delete().eq("id", body.id);
+        return NextResponse.json({ ok: true });
+      }
+
+      case "list_campaigns": {
+        const { data } = await db
+          .from("campaigns")
+          .select("*, email_templates(name)")
+          .order("created_at", { ascending: false });
+        return NextResponse.json({ campaigns: data ?? [] });
+      }
+
+      case "save_campaign": {
+        const { id, name, subject, template_id } = body;
+        if (id) {
+          const { error } = await db.from("campaigns").update({ name, subject, template_id }).eq("id", id);
+          if (error) throw error;
+          return NextResponse.json({ id });
+        }
+        const { data, error } = await db
+          .from("campaigns")
+          .insert({ name, subject, template_id, status: "draft" })
+          .select()
+          .single();
+        if (error) throw error;
+        return NextResponse.json({ id: data.id });
+      }
+
+      case "send_campaign": {
+        // Deliberate placeholder until Daniel picks an email provider
+        // (Resend account exists but visiondegarcon.fr is not verified there).
+        return NextResponse.json(
+          { error: "Sending not connected yet — choose an email provider (e.g. verify visiondegarcon.fr in Resend), then this button goes live." },
+          { status: 501 }
+        );
+      }
+
+      case "delete_campaign": {
+        await db.from("campaigns").delete().eq("id", body.id);
+        return NextResponse.json({ ok: true });
+      }
+
       case "finance_overview": {
         const days = Math.min(Number(body.days) || 90, 3650);
         const since = Math.floor((Date.now() - days * 864e5) / 1000);

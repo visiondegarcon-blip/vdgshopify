@@ -72,7 +72,7 @@ export default function OrdersPage() {
                     )}
                   </td>
                   <td className="px-4 py-2.5">{new Date(o.created_at).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" })}</td>
-                  <td className="px-4 py-2.5">{o.shipping_name ?? o.email}</td>
+                  <td className="px-4 py-2.5">{o.shipping_name ?? (o.email === "unknown" ? "—" : o.email)}</td>
                   <td className="px-4 py-2.5">{fmt(o.total_cents, o.currency)}</td>
                   <td className="px-4 py-2.5">
                     <span className="rounded-full bg-[#d5ebff] px-2 py-0.5 text-xs">{o.status}</span>
@@ -104,7 +104,7 @@ export default function OrdersPage() {
                             {o.shipping_address?.line1}{o.shipping_address?.line2 ? `, ${o.shipping_address.line2}` : ""}<br />
                             {o.shipping_address?.city} {o.shipping_address?.state} {o.shipping_address?.postal_code}<br />
                             {o.shipping_address?.country}
-                            <div className="mt-1 text-gray-500">{o.email}</div>
+                            <div className="mt-1 text-gray-500">{o.email === "unknown" ? "—" : o.email}</div>
                           </div>
                         </div>
                         <div className="flex items-start justify-end">

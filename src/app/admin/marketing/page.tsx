@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { adminCall } from "../adminApi";
 
 /* Marketing: scroll-popup builder, audience (subscribers), campaigns with a
@@ -65,6 +65,8 @@ export default function MarketingPage() {
   // popup
   const [popup, setPopup] = useState<PopupCfg>(POPUP_DEFAULTS);
   const [popupMsg, setPopupMsg] = useState<string | null>(null);
+  const popupRef = useRef<PopupCfg>(POPUP_DEFAULTS);
+  const setPopupBoth = (next: PopupCfg) => { popupRef.current = next; setPopup(next); };
 
   // audience
   const [subs, setSubs] = useState<Subscriber[] | null>(null);
@@ -78,7 +80,7 @@ export default function MarketingPage() {
   useEffect(() => {
     adminCall<{ settings: Record<string, string> }>("get_settings").then((r) => {
       try {
-        setPopup({ ...POPUP_DEFAULTS, ...JSON.parse(r.settings.popup_config ?? "{}") });
+        setPopupBoth({ ...POPUP_DEFAULTS, ...JSON.parse(r.settings.popup_config ?? "{}") });
       } catch {}
     });
   }, []);
@@ -93,8 +95,9 @@ export default function MarketingPage() {
     adminCall<{ campaigns: Campaign[] }>("list_campaigns").then((r) => setCampaigns(r.campaigns));
   };
 
-  const savePopup = async (next: PopupCfg) => {
-    setPopup(next);
+  const savePopup = async (patch: Partial<PopupCfg> = {}) => {
+    const next = { ...popupRef.current, ...patch };
+    setPopupBoth(next);
     await adminCall("update_settings", { settings: { popup_config: JSON.stringify(next) } });
     setPopupMsg("Saved — live on the store immediately.");
   };
@@ -131,7 +134,7 @@ export default function MarketingPage() {
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold">Scroll signup popup</div>
               <label className="flex cursor-pointer items-center gap-2 text-sm">
-                <input type="checkbox" checked={popup.enabled} onChange={(e) => savePopup({ ...popup, enabled: e.target.checked })} />
+                <input type="checkbox" checked={popup.enabled} onChange={(e) => savePopup({ enabled: e.target.checked })} />
                 {popup.enabled ? "Live" : "Off"}
               </label>
             </div>
@@ -140,25 +143,25 @@ export default function MarketingPage() {
               <label className="text-[12px]">
                 Shows after scrolling {popup.scroll_percent}% of the page
                 <input type="range" min={5} max={95} step={5} value={popup.scroll_percent}
-                  onChange={(e) => setPopup({ ...popup, scroll_percent: Number(e.target.value) })}
-                  onMouseUp={() => savePopup(popup)} onTouchEnd={() => savePopup(popup)}
+                  onChange={(e) => setPopupBoth({ ...popup, scroll_percent: Number(e.target.value) })}
+                  onMouseUp={() => savePopup()} onTouchEnd={() => savePopup()}
                   className="mt-1 w-full" />
               </label>
               <label className="text-[12px]">Heading
-                <input value={popup.heading} onChange={(e) => setPopup({ ...popup, heading: e.target.value })} onBlur={() => savePopup(popup)}
+                <input value={popup.heading} onChange={(e) => setPopupBoth({ ...popup, heading: e.target.value })} onBlur={() => savePopup()}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
               </label>
               <label className="text-[12px]">Body
-                <textarea value={popup.body} rows={2} onChange={(e) => setPopup({ ...popup, body: e.target.value })} onBlur={() => savePopup(popup)}
+                <textarea value={popup.body} rows={2} onChange={(e) => setPopupBoth({ ...popup, body: e.target.value })} onBlur={() => savePopup()}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
               </label>
               <label className="text-[12px]">Image URL (top of popup, optional)
-                <input value={popup.image} onChange={(e) => setPopup({ ...popup, image: e.target.value })} onBlur={() => savePopup(popup)}
+                <input value={popup.image} onChange={(e) => setPopupBoth({ ...popup, image: e.target.value })} onBlur={() => savePopup()}
                   placeholder="/products/... or https://..."
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
               </label>
               <label className="text-[12px]">Discount code revealed after signup (create it under Discounts first)
-                <input value={popup.discount_code} onChange={(e) => setPopup({ ...popup, discount_code: e.target.value.toUpperCase() })} onBlur={() => savePopup(popup)}
+                <input value={popup.discount_code} onChange={(e) => setPopupBoth({ ...popup, discount_code: e.target.value.toUpperCase() })} onBlur={() => savePopup()}
                   placeholder="VISION10"
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 font-mono text-sm" />
               </label>
@@ -166,12 +169,12 @@ export default function MarketingPage() {
                 {(["bg", "fg", "accent"] as const).map((k) => (
                   <label key={k} className="text-[12px]">
                     {k === "bg" ? "Background" : k === "fg" ? "Text" : "Accent"}
-                    <input type="color" value={popup[k]} onChange={(e) => setPopup({ ...popup, [k]: e.target.value })} onBlur={() => savePopup(popup)}
+                    <input type="color" value={popup[k]} onChange={(e) => setPopupBoth({ ...popup, [k]: e.target.value })} onBlur={() => savePopup()}
                       className="mt-1 block h-8 w-14 cursor-pointer" />
                   </label>
                 ))}
                 <label className="flex items-center gap-1.5 pb-1 text-[12px]">
-                  <input type="checkbox" checked={popup.collect_phone} onChange={(e) => savePopup({ ...popup, collect_phone: e.target.checked })} />
+                  <input type="checkbox" checked={popup.collect_phone} onChange={(e) => savePopup({ collect_phone: e.target.checked })} />
                   Phone field
                 </label>
               </div>

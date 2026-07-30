@@ -8,11 +8,12 @@ import { supabase } from "@/lib/supabase";
 /* Banner text is editable from the admin Settings page; cached in
    sessionStorage so it only flashes on the very first page view. */
 function useBannerText() {
-  const [text, setText] = useState<string>(() => {
-    if (typeof window === "undefined") return "";
-    return sessionStorage.getItem("vdg-banner") ?? "";
-  });
+  // start empty on server AND first client render (avoids hydration
+  // mismatch, QA bug 5); cached value applied in the effect below
+  const [text, setText] = useState<string>("");
   useEffect(() => {
+    const cached = sessionStorage.getItem("vdg-banner");
+    if (cached != null) setText(cached);
     supabase
       .from("site_settings")
       .select("value")

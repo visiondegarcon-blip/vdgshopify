@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { adminCall } from "../../adminApi";
+import { DEFAULT_ACCORDIONS } from "@/lib/defaultAccordions";
 
 /* Store editor: section forms left, live preview right. Saving publishes to
    site_settings; the storefront picks changes up on its next render
@@ -19,11 +20,6 @@ const NAV_FIELDS: { key: keyof NavLabels; label: string }[] = [
   { key: "policies", label: "Policies link" },
 ];
 
-const DEFAULT_ACCORDIONS: Accordion[] = [
-  { title: "Impact Transparency Commitment", body: "" },
-  { title: "Environmental Sustainability", body: "" },
-  { title: "Size Chart", body: "" },
-];
 
 export default function StoreEditor() {
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -176,7 +172,7 @@ export default function StoreEditor() {
               }}
               className={`rounded px-2.5 py-1 text-xs ${previewPath === p ? "bg-[#1a1a1a] text-white" : "bg-gray-100"}`}
             >
-              {p === "/" ? "Home" : p.split("/")[1] === "products" ? "Product" : p.slice(1)}
+              {p === "/" ? "Home" : p === "/store" ? "Store" : p === "/about-us" ? "About" : "Product"}
             </button>
           ))}
           <button onClick={reloadPreview} className="ml-auto rounded bg-gray-100 px-2.5 py-1 text-xs">

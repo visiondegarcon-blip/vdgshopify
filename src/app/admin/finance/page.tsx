@@ -65,8 +65,9 @@ export default function FinancePage() {
       `VDG EOFY summary FY${eofy.fy - 1}-${String(eofy.fy).slice(2)}`,
       "",
       "metric,amount_aud",
-      `gross_sales,${(eofy.gross / 100).toFixed(2)}`,
+      `gross_sales_before_discounts,${((eofy.gross + eofy.discounts) / 100).toFixed(2)}`,
       `discounts_given,${(eofy.discounts / 100).toFixed(2)}`,
+      `sales_total_collected,${(eofy.gross / 100).toFixed(2)}`,
       `processing_fees,${(eofy.fees / 100).toFixed(2)}`,
       `net_income,${(eofy.net / 100).toFixed(2)}`,
       `australian_sales,${(eofy.auGross / 100).toFixed(2)}`,
@@ -162,6 +163,9 @@ export default function FinancePage() {
                 <tr><th className="py-1.5">Date</th><th>Type</th><th>Amount</th><th>Fee</th><th>Net</th></tr>
               </thead>
               <tbody>
+                {data && data.txns.length === 0 && (
+                  <tr><td colSpan={5} className="py-4 text-center text-gray-500">No transactions yet.</td></tr>
+                )}
                 {data?.txns.slice(0, 20).map((t, i) => (
                   <tr key={i} className="border-t border-gray-100">
                     <td className="py-1.5">{new Date(t.ts * 1000).toLocaleDateString()}</td>
@@ -217,8 +221,9 @@ export default function FinancePage() {
                 <tbody>
                   {(
                     [
-                      ["Gross sales", fmt(eofy.gross)],
+                      ["Gross sales (before discounts)", fmt(eofy.gross + eofy.discounts)],
                       ["Discounts given", `− ${fmt(eofy.discounts)}`],
+                      ["Sales total (collected)", fmt(eofy.gross)],
                       ["Payment processing fees (Stripe)", `− ${fmt(eofy.fees)}`],
                       ["Net income", fmt(eofy.net)],
                       ["— of which Australian sales", fmt(eofy.auGross)],

@@ -96,7 +96,7 @@ export default function LiveView() {
         <div className="absolute left-4 top-4 text-white">
           <div className="text-3xl font-bold">{live?.liveCount ?? "—"}</div>
           <div className="text-[11px] uppercase tracking-[2px] text-white/60">
-            Visitors right now
+            {live?.liveCount === 1 ? "Visitor" : "Visitors"} right now
           </div>
         </div>
       </div>

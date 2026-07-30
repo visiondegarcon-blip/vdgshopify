@@ -31,16 +31,31 @@ export default function AnalyticsPage() {
       ? [...returning.values()].filter((n) => n > 1).length / returning.size
       : 0;
 
-    // daily buckets for the chart
+    // chart buckets: daily up to 90d, monthly beyond (so history shows on All)
+    const monthly = days > 90;
     const buckets = new Map<string, number>();
-    const shown = Math.min(days, 90);
-    for (let i = shown - 1; i >= 0; i--) {
-      const d = new Date(Date.now() - i * 864e5);
-      buckets.set(d.toISOString().slice(0, 10), 0);
-    }
-    for (const o of paid) {
-      const k = o.created_at.slice(0, 10);
-      if (buckets.has(k)) buckets.set(k, (buckets.get(k) ?? 0) + o.total_cents);
+    if (monthly) {
+      const first = paid.length
+        ? paid.reduce((min, o) => (o.created_at < min ? o.created_at : min), paid[0].created_at)
+        : new Date().toISOString();
+      const start = new Date(first.slice(0, 7) + "-01T00:00:00Z");
+      const now = new Date();
+      for (let d = new Date(start); d <= now; d.setUTCMonth(d.getUTCMonth() + 1)) {
+        buckets.set(d.toISOString().slice(0, 7), 0);
+      }
+      for (const o of paid) {
+        const k = o.created_at.slice(0, 7);
+        if (buckets.has(k)) buckets.set(k, (buckets.get(k) ?? 0) + o.total_cents);
+      }
+    } else {
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(Date.now() - i * 864e5);
+        buckets.set(d.toISOString().slice(0, 10), 0);
+      }
+      for (const o of paid) {
+        const k = o.created_at.slice(0, 10);
+        if (buckets.has(k)) buckets.set(k, (buckets.get(k) ?? 0) + o.total_cents);
+      }
     }
 
     // best sellers

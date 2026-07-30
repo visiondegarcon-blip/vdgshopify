@@ -112,7 +112,7 @@ export default function OptimizationPage() {
                       <td className="max-w-[220px] truncate py-1.5">{p.title}</td>
                       <td className="text-right">{p.views}</td>
                       <td className="text-right">{p.sold}</td>
-                      <td className="text-right">{p.conversion != null ? `${Math.round(p.conversion * 100)}%` : "—"}</td>
+                      <td className="text-right">{p.conversion != null && p.views >= p.sold ? `${Math.round(p.conversion * 100)}%` : "—"}</td>
                     </tr>
                   ))}
                   {d.products.length === 0 && <tr><td colSpan={4} className="py-4 text-center text-gray-400">No product data yet.</td></tr>}

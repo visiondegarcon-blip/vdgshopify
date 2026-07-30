@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { adminCall } from "../adminApi";
 
@@ -9,6 +9,12 @@ type LockCfg = {
   enabled: boolean; ends_at: string; heading: string; body: string; image: string;
   bg: string; fg: string; accent: string; collect_email: boolean; collect_phone: boolean;
 };
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 const LOCK_DEFAULTS: LockCfg = {
   enabled: false, ends_at: "", heading: "NEXT DROP LOADING",
   body: "Sign up and be first in when the clock hits zero.",
@@ -49,6 +55,8 @@ export default function OnlineStorePage() {
 
   const [lock, setLock] = useState<LockCfg>(LOCK_DEFAULTS);
   const [lockMsg, setLockMsg] = useState<string | null>(null);
+  const lockRef = useRef<LockCfg>(LOCK_DEFAULTS);
+  const setLockBoth = (next: LockCfg) => { lockRef.current = next; setLock(next); };
 
   const refreshDesign = () => {
     adminCall<{ themes: Theme[]; activeId: string | null }>("list_themes").then((r) => {
@@ -58,13 +66,16 @@ export default function OnlineStorePage() {
     adminCall<{ snapshots: Snapshot[] }>("list_snapshots").then((r) => setSnapshots(r.snapshots));
     adminCall<{ settings: Record<string, string> }>("get_settings").then((r) => {
       try {
-        setLock({ ...LOCK_DEFAULTS, ...JSON.parse(r.settings.lock_config ?? "{}") });
+        setLockBoth({ ...LOCK_DEFAULTS, ...JSON.parse(r.settings.lock_config ?? "{}") });
       } catch {}
     });
   };
 
-  const saveLock = async (next: LockCfg) => {
-    setLock(next);
+  // merges onto the latest state (ref), so a stale onBlur can never
+  // overwrite a fresher toggle click (QA bug 2)
+  const saveLock = async (patch: Partial<LockCfg> = {}) => {
+    const next = { ...lockRef.current, ...patch };
+    setLockBoth(next);
     setLockMsg(null);
     await adminCall("update_settings", { settings: { lock_config: JSON.stringify(next) } });
     setLockMsg(
@@ -106,9 +117,9 @@ export default function OnlineStorePage() {
 
   const cards: { key: "lcp" | "inp" | "cls"; title: string; value: string; sub: string }[] = speed
     ? [
-        { key: "lcp", title: "LCP P75", value: speed.lcp != null ? `${Math.round(speed.lcp)} ms` : "—", sub: `${speed.samples.lcp} samples` },
-        { key: "inp", title: "INP P75", value: speed.inp != null ? `${Math.round(speed.inp)} ms` : "—", sub: `${speed.samples.inp} samples` },
-        { key: "cls", title: "Cumulative Layout Shift", value: speed.cls != null ? `${speed.cls.toFixed(3)}` : "—", sub: `${speed.samples.cls} samples` },
+        { key: "lcp", title: "LCP P75", value: speed.lcp != null ? `${Math.round(speed.lcp)} ms` : "—", sub: `${speed.samples.lcp} sample${speed.samples.lcp === 1 ? "" : "s"}` },
+        { key: "inp", title: "INP P75", value: speed.inp != null ? `${Math.round(speed.inp)} ms` : "—", sub: `${speed.samples.inp} sample${speed.samples.inp === 1 ? "" : "s"}` },
+        { key: "cls", title: "Cumulative Layout Shift", value: speed.cls != null ? `${speed.cls.toFixed(3)}` : "—", sub: `${speed.samples.cls} sample${speed.samples.cls === 1 ? "" : "s"}` },
       ]
     : [];
 
@@ -257,6 +268,7 @@ export default function OnlineStorePage() {
                     </button>
                     <button
                       onClick={async () => {
+                        if (!confirm("Delete this saved design permanently?")) return;
                         await adminCall("delete_snapshot", { id: s.id });
                         refreshDesign();
                       }}
@@ -285,7 +297,7 @@ export default function OnlineStorePage() {
             <input
               type="checkbox"
               checked={lock.enabled}
-              onChange={(e) => saveLock({ ...lock, enabled: e.target.checked })}
+              onChange={(e) => saveLock({ enabled: e.target.checked })}
             />
             {lock.enabled ? "Armed" : "Off"}
           </label>
@@ -296,11 +308,11 @@ export default function OnlineStorePage() {
             Drop time
             <input
               type="datetime-local"
-              value={lock.ends_at ? lock.ends_at.slice(0, 16) : ""}
+              value={lock.ends_at ? toLocalInput(lock.ends_at) : ""}
               onChange={(e) =>
-                setLock({ ...lock, ends_at: e.target.value ? new Date(e.target.value).toISOString() : "" })
+                setLockBoth({ ...lock, ends_at: e.target.value ? new Date(e.target.value).toISOString() : "" })
               }
-              onBlur={() => saveLock(lock)}
+              onBlur={() => saveLock()}
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
             />
           </label>
@@ -308,8 +320,8 @@ export default function OnlineStorePage() {
             Image URL
             <input
               value={lock.image}
-              onChange={(e) => setLock({ ...lock, image: e.target.value })}
-              onBlur={() => saveLock(lock)}
+              onChange={(e) => setLockBoth({ ...lock, image: e.target.value })}
+              onBlur={() => saveLock()}
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
             />
           </label>
@@ -317,8 +329,8 @@ export default function OnlineStorePage() {
             Heading
             <input
               value={lock.heading}
-              onChange={(e) => setLock({ ...lock, heading: e.target.value })}
-              onBlur={() => saveLock(lock)}
+              onChange={(e) => setLockBoth({ ...lock, heading: e.target.value })}
+              onBlur={() => saveLock()}
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
             />
           </label>
@@ -326,8 +338,8 @@ export default function OnlineStorePage() {
             Body
             <input
               value={lock.body}
-              onChange={(e) => setLock({ ...lock, body: e.target.value })}
-              onBlur={() => saveLock(lock)}
+              onChange={(e) => setLockBoth({ ...lock, body: e.target.value })}
+              onBlur={() => saveLock()}
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
             />
           </label>
@@ -338,8 +350,8 @@ export default function OnlineStorePage() {
                 <input
                   type="color"
                   value={lock[k]}
-                  onChange={(e) => setLock({ ...lock, [k]: e.target.value })}
-                  onBlur={() => saveLock(lock)}
+                  onChange={(e) => setLockBoth({ ...lock, [k]: e.target.value })}
+                  onBlur={() => saveLock()}
                   className="mt-1 block h-8 w-14 cursor-pointer"
                 />
               </label>
@@ -350,7 +362,7 @@ export default function OnlineStorePage() {
               <input
                 type="checkbox"
                 checked={lock.collect_email}
-                onChange={(e) => saveLock({ ...lock, collect_email: e.target.checked })}
+                onChange={(e) => saveLock({ collect_email: e.target.checked })}
               />
               Email signup
             </label>
@@ -358,7 +370,7 @@ export default function OnlineStorePage() {
               <input
                 type="checkbox"
                 checked={lock.collect_phone}
-                onChange={(e) => saveLock({ ...lock, collect_phone: e.target.checked })}
+                onChange={(e) => saveLock({ collect_phone: e.target.checked })}
               />
               Phone field
             </label>

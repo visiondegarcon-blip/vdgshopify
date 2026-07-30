@@ -667,18 +667,34 @@ export async function POST(req: NextRequest) {
         }
         const { data: today } = await db
           .from("events")
-          .select("session_id,event,path")
+          .select("session_id,event,path,country,city,ts")
           .gte("ts", dayStart.toISOString())
           .limit(50000);
         const sessionsToday = new Set<string>();
         let viewsToday = 0;
         const pages = new Map<string, number>();
+        const locSessions = new Map<string, Set<string>>();
+        const tenMin = new Date(Date.now() - 10 * 6e4).toISOString();
+        const behaviorBySession = new Map<string, Set<string>>();
         for (const e of today ?? []) {
           if (e.event === "page_view") {
             sessionsToday.add(e.session_id);
             viewsToday++;
             pages.set(e.path ?? "?", (pages.get(e.path ?? "?") ?? 0) + 1);
+            if (e.country) {
+              const key = [e.country, e.city].filter(Boolean).join(" · ");
+              (locSessions.get(key) ?? locSessions.set(key, new Set()).get(key)!).add(e.session_id);
+            }
           }
+          if (e.ts >= tenMin) {
+            (behaviorBySession.get(e.session_id) ?? behaviorBySession.set(e.session_id, new Set()).get(e.session_id)!).add(e.event);
+          }
+        }
+        let activeCarts = 0, checkingOut = 0, purchasedNow = 0;
+        for (const kinds of behaviorBySession.values()) {
+          if (kinds.has("purchase")) purchasedNow++;
+          else if (kinds.has("checkout_started")) checkingOut++;
+          else if (kinds.has("add_to_cart")) activeCarts++;
         }
         const { data: todayOrders } = await db
           .from("orders")
@@ -697,6 +713,11 @@ export async function POST(req: NextRequest) {
           viewsToday,
           ordersToday,
           salesToday,
+          behavior: { activeCarts, checkingOut, purchased: purchasedNow },
+          locations: [...locSessions.entries()]
+            .map(([k, s]) => [k, s.size] as [string, number])
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 6),
           topPages: [...pages.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6),
         });
       }

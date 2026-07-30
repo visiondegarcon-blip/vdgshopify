@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { adminCall } from "../adminApi";
+import DragImage from "../DragImage";
 
 /* Marketing: scroll-popup builder, audience (subscribers), campaigns with a
    block-based email template maker. Campaign sending is a placeholder until
@@ -8,12 +9,12 @@ import { adminCall } from "../adminApi";
 
 type PopupCfg = {
   enabled: boolean; scroll_percent: number; heading: string; body: string; image: string;
-  bg: string; fg: string; accent: string; discount_code: string; collect_phone: boolean;
+  image_pos: string; bg: string; fg: string; accent: string; discount_code: string; collect_phone: boolean;
 };
 const POPUP_DEFAULTS: PopupCfg = {
   enabled: false, scroll_percent: 30, heading: "JOIN THE VISION",
   body: "Sign up and get a discount code for your first order.",
-  image: "", bg: "#000000", fg: "#ffffff", accent: "#FE0000", discount_code: "", collect_phone: false,
+  image: "", image_pos: "50% 50%", bg: "#000000", fg: "#ffffff", accent: "#FE0000", discount_code: "", collect_phone: false,
 };
 
 type Subscriber = {
@@ -155,11 +156,19 @@ export default function MarketingPage() {
                 <textarea value={popup.body} rows={2} onChange={(e) => setPopupBoth({ ...popup, body: e.target.value })} onBlur={() => savePopup()}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
               </label>
-              <label className="text-[12px]">Image URL (top of popup, optional)
+              <label className="text-[12px]">Image URL (left side of popup, optional)
                 <input value={popup.image} onChange={(e) => setPopupBoth({ ...popup, image: e.target.value })} onBlur={() => savePopup()}
                   placeholder="/products/... or https://..."
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
               </label>
+              {popup.image && (
+                <DragImage
+                  src={popup.image}
+                  pos={popup.image_pos}
+                  aspect="3/4"
+                  onChange={(p) => savePopup({ image_pos: p })}
+                />
+              )}
               <label className="text-[12px]">Discount code revealed after signup (create it under Discounts first)
                 <input value={popup.discount_code} onChange={(e) => setPopupBoth({ ...popup, discount_code: e.target.value.toUpperCase() })} onBlur={() => savePopup()}
                   placeholder="VISION10"
@@ -184,19 +193,28 @@ export default function MarketingPage() {
           {/* live preview */}
           <div className="rounded-xl bg-gray-200 p-6 shadow-inner">
             <div className="text-center text-[11px] text-gray-500">Preview</div>
-            <div className="mt-3 overflow-hidden shadow-2xl" style={{ background: popup.bg, color: popup.fg, borderRadius: 6 }}>
+            <div className="mt-3 grid overflow-hidden shadow-2xl sm:grid-cols-2" style={{ background: popup.bg, color: popup.fg, borderRadius: 8 }}>
               {popup.image && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={popup.image} alt="" className="h-32 w-full object-cover" />
+                <img src={popup.image} alt="" className="hidden h-full min-h-[260px] w-full object-cover sm:block" style={{ objectPosition: popup.image_pos || "50% 50%" }} />
               )}
-              <div className="p-5 text-center">
-                <div className="font-mono text-lg font-bold tracking-widest">{popup.heading}</div>
-                <p className="mt-2 text-xs opacity-80">{popup.body}</p>
-                <div className="mt-3 border px-3 py-1.5 text-left text-xs opacity-60" style={{ borderColor: popup.fg }}>Email</div>
+              <div className="flex flex-col justify-center p-5 text-center">
+                <div className="text-[15px] font-bold leading-snug" style={{ fontFamily: "var(--vdg-font-body, serif)" }}>{popup.heading}</div>
+                <p className="mt-2 text-[11px] italic opacity-85">{popup.body}</p>
+                <div className="mt-3 rounded bg-white px-3 py-1.5 text-left">
+                  <div className="text-[9px] text-gray-500">Email</div>
+                  <div className="text-[11px] text-gray-300">&nbsp;</div>
+                </div>
                 {popup.collect_phone && (
-                  <div className="mt-2 border px-3 py-1.5 text-left text-xs opacity-60" style={{ borderColor: popup.fg }}>Phone (optional)</div>
+                  <div className="mt-2 flex gap-2">
+                    <div className="flex w-10 items-center justify-center rounded bg-white text-base">🇦🇺</div>
+                    <div className="w-full rounded bg-white px-3 py-1.5 text-left">
+                      <div className="text-[9px] text-gray-500">Phone</div>
+                      <div className="text-[11px] text-black">+61</div>
+                    </div>
+                  </div>
                 )}
-                <div className="mt-3 px-4 py-2 font-mono text-xs font-bold" style={{ background: popup.accent, color: popup.bg }}>SIGN UP</div>
+                <div className="mt-3 rounded px-4 py-2 text-xs font-semibold" style={{ background: popup.accent, color: popup.bg }}>Join</div>
               </div>
             </div>
           </div>

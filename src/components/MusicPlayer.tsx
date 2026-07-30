@@ -1,12 +1,36 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
 export default function MusicPlayer() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const pathname = usePathname();
-  if (pathname.startsWith("/admin")) return null;
+  const onAdmin = pathname.startsWith("/admin");
+
+  // Match the original site: music starts by itself. Browsers block autoplay
+  // until the user interacts, so fall back to starting on the first tap/scroll/key.
+  useEffect(() => {
+    if (onAdmin) return;
+    const a = audioRef.current;
+    if (!a) return;
+    let started = false;
+    const start = () => {
+      if (started) return;
+      a.play().then(() => {
+        started = true;
+        setPlaying(true);
+        cleanup();
+      }).catch(() => {});
+    };
+    const events = ["pointerdown", "keydown", "touchstart", "scroll"] as const;
+    const cleanup = () => events.forEach((e) => removeEventListener(e, start));
+    start();
+    events.forEach((e) => addEventListener(e, start, { passive: true }));
+    return cleanup;
+  }, [onAdmin]);
+
+  if (onAdmin) return null;
 
   const toggle = () => {
     const a = audioRef.current;

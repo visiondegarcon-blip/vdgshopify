@@ -16,7 +16,11 @@ type PopupConfig = {
   discount_code: string;
   collect_phone: boolean;
   image_pos?: string;
+  font_head?: string;
+  font_body?: string;
 };
+
+const popupFont = (k?: string) => (k ? `var(--font-${k})` : undefined);
 
 const COUNTRIES: { code: string; dial: string; flag: string; name: string }[] = [
   { code: "AU", dial: "+61", flag: "🇦🇺", name: "Australia" },
@@ -153,7 +157,7 @@ export default function ScrollPopup() {
         >
           ✕
         </button>
-        <div className="flex flex-col justify-center px-8 py-10 text-center sm:px-10">
+        <div className="flex flex-col justify-center px-8 py-10 text-center sm:px-10" style={{ fontFamily: popupFont(cfg.font_body) }}>
           {cfg.image && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -163,7 +167,7 @@ export default function ScrollPopup() {
               style={{ objectPosition: cfg.image_pos || "50% 50%" }}
             />
           )}
-          <h2 className="text-[27px] font-bold leading-snug" style={{ fontFamily: "var(--vdg-font-body)" }}>
+          <h2 className="text-[27px] font-bold leading-snug" style={{ fontFamily: popupFont(cfg.font_head) ?? "var(--vdg-font-body)" }}>
             {cfg.heading}
           </h2>
           <p className="mt-3 text-[15px] italic opacity-85">{cfg.body}</p>

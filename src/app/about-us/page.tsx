@@ -1,14 +1,38 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Header from "@/components/Header";
+import { supabase } from "@/lib/supabase";
 import { TABS, SECTIONS, ARCHIVE, type Tab } from "./content";
 
 /* The manifesto stays pinned on the left like a transmission, the archive
-   runs past it as an incoming feed of grayscale clippings on the right. */
+   runs past it as an incoming feed of grayscale clippings on the right.
+   Text sections can be overridden from the admin store editor (content_about). */
 
 export default function AboutPage() {
   const [tab, setTab] = useState<Tab>("What Is VDG");
+  const [sections, setSections] = useState(SECTIONS);
+
+  useEffect(() => {
+    supabase
+      .from("site_settings")
+      .select("value")
+      .eq("key", "content_about")
+      .maybeSingle()
+      .then(({ data }) => {
+        try {
+          const c = JSON.parse(data?.value ?? "{}") as { sections?: Partial<typeof SECTIONS> };
+          if (c.sections) {
+            const merged = { ...SECTIONS };
+            for (const t of TABS) {
+              const o = c.sections[t];
+              if (Array.isArray(o) && o.length) merged[t] = o;
+            }
+            setSections(merged);
+          }
+        } catch {}
+      });
+  }, []);
 
   return (
     <main className="min-h-screen bg-white text-black">
@@ -40,7 +64,7 @@ export default function AboutPage() {
           </div>
 
           <div className="mt-9 flex flex-col gap-7">
-            {SECTIONS[tab].map((s) => (
+            {sections[tab].map((s) => (
               <div key={s.heading}>
                 <h2 className="font-mono text-[13px] font-bold uppercase tracking-wide">
                   {s.heading}

@@ -145,6 +145,31 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
+      case "set_product_price": {
+        // one price across all of a product's variants (sizes share a price)
+        const { productId, price_cents } = body;
+        const cents = Math.round(Number(price_cents));
+        if (!Number.isFinite(cents) || cents < 50) throw new Error("Price must be at least $0.50");
+        const { error } = await db.from("variants").update({ price_cents: cents }).eq("product_id", productId);
+        if (error) throw error;
+        return NextResponse.json({ ok: true });
+      }
+
+      case "upload_asset": {
+        // generic site asset (hero backgrounds etc.) -> Supabase Storage
+        const { filename, base64 } = body;
+        const ext = (String(filename).split(".").pop() || "png").toLowerCase();
+        if (!["png", "jpg", "jpeg", "webp", "gif", "avif"].includes(ext)) throw new Error("Unsupported file type");
+        const path = `site/${Date.now()}.${ext}`;
+        const buf = Buffer.from(base64, "base64");
+        const { error } = await db.storage.from("product-images").upload(path, buf, {
+          contentType: ext === "jpg" || ext === "jpeg" ? "image/jpeg" : `image/${ext}`,
+        });
+        if (error) throw error;
+        const { data: pub } = db.storage.from("product-images").getPublicUrl(path);
+        return NextResponse.json({ url: pub.publicUrl });
+      }
+
       case "upload_image": {
         // base64 payload from the admin UI -> Supabase Storage (public bucket)
         const { productId, filename, base64 } = body;
@@ -247,6 +272,10 @@ export async function POST(req: NextRequest) {
           "active_theme_id",
           "content_home",
           "content_product",
+          "content_store",
+          "content_about",
+          "content_buttons",
+          "content_fonts",
           "lock_config",
           "popup_config",
         ];
@@ -266,13 +295,13 @@ export async function POST(req: NextRequest) {
         const prevCutoff = new Date(Date.now() - 2 * days * 864e5).toISOString();
         const { data: events } = await db
           .from("events")
-          .select("session_id,event,path,country,city,referrer,ts,meta")
+          .select("session_id,event,path,country,city,referrer,device,ts,meta")
           .gte("ts", prevCutoff)
           .order("ts")
           .limit(100000);
         const { data: orders } = await db
           .from("orders")
-          .select("created_at,status,total_cents, order_items(product_title,quantity)")
+          .select("created_at,status,total_cents, order_items(product_title,variant_title,quantity)")
           .eq("status", "paid");
 
         const cur = (events ?? []).filter((e) => e.ts >= cutoff);
@@ -358,20 +387,96 @@ export async function POST(req: NextRequest) {
           if (m.soldOut) soldOutViews.set(key, (soldOutViews.get(key) ?? 0) + 1);
         }
 
-        // sellers from all paid orders in range window (use created_at cutoff)
+        // size interest: clicked (variant_click) and carted (add_to_cart meta)
+        const sizeAgg = (eventName: string) => {
+          const byProduct = new Map<string, Map<string, number>>();
+          for (const e of cur) {
+            if (e.event !== eventName) continue;
+            const m = e.meta as { title?: string; handle?: string; variant?: string };
+            const product = m.title ?? m.handle;
+            if (!product || !m.variant) continue;
+            const sizes = byProduct.get(product) ?? byProduct.set(product, new Map()).get(product)!;
+            sizes.set(m.variant, (sizes.get(m.variant) ?? 0) + 1);
+          }
+          return [...byProduct.entries()].map(([product, sizes]) => ({
+            product,
+            sizes: [...sizes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6),
+          }));
+        };
+        const sizesClicked = sizeAgg("variant_click");
+        const sizesCarted = sizeAgg("add_to_cart");
+
+        // ATC rate per product: sessions that carted it / sessions that viewed it
+        const viewSessions = new Map<string, Set<string>>();
+        const cartSessions = new Map<string, Set<string>>();
+        for (const e of cur) {
+          if (e.event !== "product_view" && e.event !== "add_to_cart") continue;
+          const m = e.meta as { title?: string; handle?: string };
+          const product = m.title ?? m.handle;
+          if (!product) continue;
+          const map = e.event === "product_view" ? viewSessions : cartSessions;
+          (map.get(product) ?? map.set(product, new Set()).get(product)!).add(e.session_id);
+        }
+        const atcRates = [...viewSessions.entries()]
+          .map(([product, vs]) => ({
+            product,
+            viewed: vs.size,
+            carted: cartSessions.get(product)?.size ?? 0,
+            rate: vs.size ? Math.round(((cartSessions.get(product)?.size ?? 0) / vs.size) * 100) : 0,
+          }))
+          .sort((a, b) => b.viewed - a.viewed)
+          .slice(0, 8);
+
+        // landing + exit pages, traffic-by-hour heat, device split, new vs returning
+        const landing = new Map<string, number>();
+        const exits = new Map<string, number>();
+        const trafficHeat = Array.from({ length: 7 }, () => Array(24).fill(0) as number[]);
+        const devices = new Map<string, Set<string>>();
+        const prevSessions = new Set(prev.map((e) => e.session_id));
+        let returningVisitors = 0;
+        for (const [sid, evs] of bySession.entries()) {
+          const pvs = evs.filter((e) => e.event === "page_view");
+          if (pvs.length) {
+            landing.set(pvs[0].path ?? "?", (landing.get(pvs[0].path ?? "?") ?? 0) + 1);
+            exits.set(pvs[pvs.length - 1].path ?? "?", (exits.get(pvs[pvs.length - 1].path ?? "?") ?? 0) + 1);
+          }
+          const dev = evs.find((e) => e.device)?.device ?? "unknown";
+          (devices.get(dev) ?? devices.set(dev, new Set()).get(dev)!).add(sid);
+          if (prevSessions.has(sid)) returningVisitors++;
+        }
+        for (const e of cur) {
+          if (e.event !== "page_view") continue;
+          const d = new Date(e.ts);
+          trafficHeat[d.getUTCDay()][d.getUTCHours()]++;
+        }
+
+        // sellers + sizes sold from all paid orders in range window (incl. Shopify history)
         const sellers = new Map<string, number>();
         const hourHeat = Array.from({ length: 7 }, () => Array(24).fill(0) as number[]);
         const pairs = new Map<string, number>();
+        const soldSizes = new Map<string, Map<string, number>>();
         for (const o of orders ?? []) {
           if (o.created_at < cutoff) continue;
           const d = new Date(o.created_at);
           hourHeat[d.getUTCDay()][d.getUTCHours()]++;
           const titles = [...new Set((o.order_items ?? []).map((i) => i.product_title))].sort();
-          for (const i of o.order_items ?? []) sellers.set(i.product_title, (sellers.get(i.product_title) ?? 0) + i.quantity);
+          for (const i of o.order_items ?? []) {
+            sellers.set(i.product_title, (sellers.get(i.product_title) ?? 0) + i.quantity);
+            if (i.variant_title && i.variant_title !== "Default") {
+              const sizes = soldSizes.get(i.product_title) ?? soldSizes.set(i.product_title, new Map()).get(i.product_title)!;
+              sizes.set(i.variant_title, (sizes.get(i.variant_title) ?? 0) + i.quantity);
+            }
+          }
           for (let a = 0; a < titles.length; a++)
             for (let b = a + 1; b < titles.length; b++)
               pairs.set(`${titles[a]} + ${titles[b]}`, (pairs.get(`${titles[a]} + ${titles[b]}`) ?? 0) + 1);
         }
+        const sizesSold = [...soldSizes.entries()]
+          .map(([product, sizes]) => ({
+            product,
+            sizes: [...sizes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6),
+          }))
+          .sort((a, b) => b.sizes.reduce((n, [, v]) => n + v, 0) - a.sizes.reduce((n, [, v]) => n + v, 0));
 
         const products = [...new Set([...views.keys(), ...sellers.keys()])].map((title) => ({
           title,
@@ -394,6 +499,16 @@ export async function POST(req: NextRequest) {
           soldOutDemand: [...soldOutViews.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6),
           pairs: [...pairs.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6),
           hourHeat,
+          sizesClicked,
+          sizesCarted,
+          sizesSold,
+          atcRates,
+          landing: [...landing.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6),
+          exits: [...exits.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6),
+          trafficHeat,
+          devices: [...devices.entries()].map(([d, s]) => [d, s.size] as [string, number]).sort((a, b) => b[1] - a[1]),
+          returningVisitors,
+          newVisitors: bySession.size - returningVisitors,
         });
       }
 
@@ -432,15 +547,16 @@ export async function POST(req: NextRequest) {
 
       case "save_template": {
         const { id, name, blocks } = body;
+        const font = ["mono", "serif", "sans", "times"].includes(body.font) ? body.font : "mono";
         if (id) {
           const { error } = await db
             .from("email_templates")
-            .update({ name, blocks, updated_at: new Date().toISOString() })
+            .update({ name, blocks, font, updated_at: new Date().toISOString() })
             .eq("id", id);
           if (error) throw error;
           return NextResponse.json({ id });
         }
-        const { data, error } = await db.from("email_templates").insert({ name, blocks }).select().single();
+        const { data, error } = await db.from("email_templates").insert({ name, blocks, font }).select().single();
         if (error) throw error;
         return NextResponse.json({ id: data.id });
       }
@@ -730,6 +846,7 @@ export async function POST(req: NextRequest) {
           const StripeLib = (await import("stripe")).default;
           const stripe = new StripeLib(stripeKey);
           for (const c of codes ?? []) {
+            if (!c.stripe_promo_id) continue; // local (free-shipping) codes
             try {
               const promo = await stripe.promotionCodes.retrieve(c.stripe_promo_id);
               if (promo.times_redeemed !== c.times_redeemed || promo.active !== c.active) {
@@ -747,36 +864,61 @@ export async function POST(req: NextRequest) {
       }
 
       case "create_discount": {
-        const { code, kind, value, maxRedemptions, expiresAt } = body as {
-          code: string; kind: "percent" | "amount"; value: number;
+        const { code, kind, value, maxRedemptions, expiresAt, restrictions } = body as {
+          code: string; kind: "percent" | "amount" | "free_shipping"; value?: number;
           maxRedemptions?: number; expiresAt?: string;
+          restrictions?: { min_order_cents?: number; first_order_only?: boolean; one_per_customer?: boolean };
         };
         const clean = String(code).toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 20);
-        if (!clean || !value || value <= 0) throw new Error("Code and a positive value are required");
-        if (kind === "percent" && value > 100) throw new Error("Percent must be 1-100");
-        const StripeLib = (await import("stripe")).default;
-        const stripe = new StripeLib(process.env.STRIPE_SECRET_KEY!);
-        const coupon = await stripe.coupons.create(
-          kind === "percent"
-            ? { percent_off: value, duration: "once", name: clean }
-            : { amount_off: Math.round(value), currency: "aud", duration: "once", name: clean }
-        );
-        const promo = await stripe.promotionCodes.create({
-          promotion: { type: "coupon", coupon: coupon.id },
-          code: clean,
-          ...(maxRedemptions ? { max_redemptions: Math.floor(maxRedemptions) } : {}),
-          ...(expiresAt ? { expires_at: Math.floor(new Date(expiresAt).getTime() / 1000) } : {}),
-        });
+        if (!clean) throw new Error("A code is required");
+        const restr = {
+          min_order_cents: Math.max(0, Math.round(Number(restrictions?.min_order_cents) || 0)),
+          first_order_only: !!restrictions?.first_order_only,
+          one_per_customer: !!restrictions?.one_per_customer,
+        };
+        let stripeCouponId: string | null = null;
+        let stripePromoId: string | null = null;
+        if (kind !== "free_shipping") {
+          if (!value || value <= 0) throw new Error("A positive value is required");
+          if (kind === "percent" && value > 100) throw new Error("Percent must be 1-100");
+          const StripeLib = (await import("stripe")).default;
+          const stripe = new StripeLib(process.env.STRIPE_SECRET_KEY!);
+          const coupon = await stripe.coupons.create(
+            kind === "percent"
+              ? { percent_off: value, duration: "once", name: clean }
+              : { amount_off: Math.round(value), currency: "aud", duration: "once", name: clean }
+          );
+          const promo = await stripe.promotionCodes.create({
+            promotion: { type: "coupon", coupon: coupon.id },
+            code: clean,
+            ...(maxRedemptions ? { max_redemptions: Math.floor(maxRedemptions) } : {}),
+            ...(expiresAt ? { expires_at: Math.floor(new Date(expiresAt).getTime() / 1000) } : {}),
+            ...(restr.min_order_cents || restr.first_order_only
+              ? {
+                  restrictions: {
+                    ...(restr.min_order_cents
+                      ? { minimum_amount: restr.min_order_cents, minimum_amount_currency: "aud" }
+                      : {}),
+                    ...(restr.first_order_only ? { first_time_transaction: true } : {}),
+                  },
+                }
+              : {}),
+          });
+          stripeCouponId = coupon.id;
+          stripePromoId = promo.id;
+        }
         const { data, error } = await db
           .from("discount_codes")
           .insert({
             code: clean,
-            stripe_coupon_id: coupon.id,
-            stripe_promo_id: promo.id,
+            kind,
+            stripe_coupon_id: stripeCouponId,
+            stripe_promo_id: stripePromoId,
             percent_off: kind === "percent" ? value : null,
-            amount_off_cents: kind === "amount" ? Math.round(value) : null,
+            amount_off_cents: kind === "amount" ? Math.round(value!) : null,
             max_redemptions: maxRedemptions ?? null,
             expires_at: expiresAt || null,
+            restrictions: restr,
           })
           .select()
           .single();
@@ -788,9 +930,11 @@ export async function POST(req: NextRequest) {
         const { id, active } = body;
         const { data: row } = await db.from("discount_codes").select("stripe_promo_id").eq("id", id).single();
         if (!row) throw new Error("Not found");
-        const StripeLib = (await import("stripe")).default;
-        const stripe = new StripeLib(process.env.STRIPE_SECRET_KEY!);
-        await stripe.promotionCodes.update(row.stripe_promo_id, { active: Boolean(active) });
+        if (row.stripe_promo_id) {
+          const StripeLib = (await import("stripe")).default;
+          const stripe = new StripeLib(process.env.STRIPE_SECRET_KEY!);
+          await stripe.promotionCodes.update(row.stripe_promo_id, { active: Boolean(active) });
+        }
         await db.from("discount_codes").update({ active: Boolean(active) }).eq("id", id);
         return NextResponse.json({ ok: true });
       }

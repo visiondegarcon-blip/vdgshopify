@@ -11,11 +11,14 @@ export default function ProductClient({
   product,
   nextHandle,
   accordionOverrides,
+  buttons,
 }: {
   product: Product;
   nextHandle: string;
   accordionOverrides?: { title: string; body: string }[];
+  buttons?: { add_to_cart: string; sold_out: string; view_cart: string };
 }) {
+  const label = { add_to_cart: "Add To Cart", sold_out: "Sold Out", view_cart: "View Cart", ...buttons };
   const accordions = accordionOverrides ?? DEFAULT_ACCORDIONS;
   const { add } = useCart();
   const inStock = product.variants.filter((v) => v.stock > 0);
@@ -46,7 +49,7 @@ export default function ProductClient({
       qty: 1,
       maxQty: variant.stock,
     });
-    track("add_to_cart", { handle: product.handle, variant: variant.title, priceCents: variant.price_cents });
+    track("add_to_cart", { handle: product.handle, title: product.title, variant: variant.title, priceCents: variant.price_cents });
     setAdded(true);
   };
 
@@ -104,7 +107,12 @@ export default function ProductClient({
         {product.variants.length > 1 && (
           <select
             value={variantId}
-            onChange={(e) => setVariantId(Number(e.target.value))}
+            onChange={(e) => {
+              const id = Number(e.target.value);
+              setVariantId(id);
+              const v = product.variants.find((x) => x.id === id);
+              if (v) track("variant_click", { handle: product.handle, title: product.title, variant: v.title });
+            }}
             className="mt-4 block border border-black px-3 py-2 font-mono text-sm"
           >
             {product.variants.map((v) => (
@@ -125,7 +133,7 @@ export default function ProductClient({
             disabled={soldOut || !variant || variant.stock <= 0}
             className="t-btn px-4 py-2 font-mono text-sm disabled:cursor-not-allowed"
           >
-            {soldOut ? "Sold Out" : "Add To Cart"}
+            {soldOut ? label.sold_out : label.add_to_cart}
           </button>
           <Link href="/store" className="t-btn px-4 py-2 font-mono text-sm">
             Keep Shopping
@@ -136,7 +144,7 @@ export default function ProductClient({
           <div className="mt-4 flex items-center justify-between border border-black px-4 py-3">
             <span className="font-mono text-sm">✓ Added to cart</span>
             <Link href="/cart" className="t-btn px-4 py-2 font-mono text-sm">
-              View Cart
+              {label.view_cart}
             </Link>
           </div>
         )}

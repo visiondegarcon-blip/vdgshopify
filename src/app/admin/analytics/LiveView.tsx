@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import createGlobe from "cobe";
+import Globe3D from "./Globe3D";
 import { adminCall, fmt } from "../adminApi";
 
 /* Shopify-style Live View: left column of stat cards (visitors, sales,
@@ -45,12 +45,8 @@ function StatCard({ label, value }: { label: string; value: string }) {
 }
 
 export default function LiveView() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [live, setLive] = useState<Live | null>(null);
   const markersRef = useRef<{ location: [number, number]; size: number }[]>([]);
-  const pointer = useRef<{ startX: number; startY: number; basePhi: number; baseTheta: number } | null>(null);
-  const rot = useRef({ phi: -2.0, theta: -0.25, auto: 0 }); // start roughly over Australia
-  const [grabbing, setGrabbing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,75 +73,6 @@ export default function LiveView() {
     };
   }, []);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    let raf = 0;
-    let pulse = 0;
-    const globe = createGlobe(canvas, {
-      devicePixelRatio: 2,
-      width: 1200,
-      height: 1200,
-      phi: 0,
-      theta: -0.25,
-      dark: 0,
-      diffuse: 1.2,
-      mapSamples: 30000,
-      mapBrightness: 2,
-      baseColor: [0.55, 0.72, 0.96], // Shopify light-blue dots on pale sphere
-      markerColor: [0.42, 0.25, 0.94], // purple visitor pins
-      glowColor: [0.85, 0.96, 0.89], // soft green rim glow
-      opacity: 0.95,
-      markers: [],
-    });
-    const frame = () => {
-      pulse += 0.06;
-      if (!pointer.current) rot.current.auto += 0.0016; // gentle spin unless dragging
-      const beat = 1 + 0.35 * Math.sin(pulse);
-      globe.update({
-        phi: rot.current.phi + rot.current.auto,
-        theta: rot.current.theta,
-        markers: markersRef.current.map((m) => ({ ...m, size: m.size * beat })),
-      });
-      raf = requestAnimationFrame(frame);
-    };
-    raf = requestAnimationFrame(frame);
-
-    const down = (e: PointerEvent) => {
-      pointer.current = {
-        startX: e.clientX,
-        startY: e.clientY,
-        basePhi: rot.current.phi,
-        baseTheta: rot.current.theta,
-      };
-      canvas.setPointerCapture(e.pointerId);
-      setGrabbing(true);
-    };
-    const move = (e: PointerEvent) => {
-      if (!pointer.current) return;
-      rot.current.phi = pointer.current.basePhi + (e.clientX - pointer.current.startX) * 0.005;
-      rot.current.theta = Math.min(
-        1.1,
-        Math.max(-1.1, pointer.current.baseTheta - (e.clientY - pointer.current.startY) * 0.004)
-      );
-    };
-    const up = () => {
-      pointer.current = null;
-      setGrabbing(false);
-    };
-    canvas.addEventListener("pointerdown", down);
-    canvas.addEventListener("pointermove", move);
-    canvas.addEventListener("pointerup", up);
-    canvas.addEventListener("pointercancel", up);
-    return () => {
-      cancelAnimationFrame(raf);
-      canvas.removeEventListener("pointerdown", down);
-      canvas.removeEventListener("pointermove", move);
-      canvas.removeEventListener("pointerup", up);
-      canvas.removeEventListener("pointercancel", up);
-      globe.destroy();
-    };
-  }, []);
 
   const maxLoc = Math.max(1, ...(live?.locations.map(([, n]) => n) ?? [1]));
 
@@ -247,15 +174,12 @@ export default function LiveView() {
 
       {/* right — big light globe */}
       <div className="relative min-h-[520px] overflow-hidden rounded-xl">
-        <canvas
-          ref={canvasRef}
+        <Globe3D
+          markersRef={markersRef}
           style={{
             width: "min(100%, 860px)",
             aspectRatio: "1",
-            display: "block",
             margin: "0 auto",
-            cursor: grabbing ? "grabbing" : "grab",
-            touchAction: "none",
           }}
         />
         <div className="pointer-events-none absolute bottom-3 right-4 flex items-center gap-4 rounded-full bg-white/80 px-4 py-1.5 text-[12px] text-gray-700 shadow-sm backdrop-blur">

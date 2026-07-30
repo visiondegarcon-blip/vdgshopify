@@ -38,7 +38,7 @@ body {
 
 /* themed building blocks used across the storefront */
 .t-banner { background: var(--vdg-banner-bg); color: var(--vdg-banner-fg); }
-.t-btn { background: var(--vdg-btn-bg); color: var(--vdg-btn-fg); border-radius: var(--vdg-radius); }
+.t-btn { background: var(--vdg-btn-bg); color: var(--vdg-btn-fg); border-radius: var(--vdg-radius); border: var(--vdg-btn-border, 0); text-transform: var(--vdg-btn-transform, none); }
 .t-badge { background: var(--vdg-badge); color: #fff; border-radius: var(--vdg-radius); }
 .t-accent { color: var(--vdg-accent); }
 .t-head { font-family: var(--vdg-font-head), monospace; }

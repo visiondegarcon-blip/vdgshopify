@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { validateDiscount, type DiscountRow } from "@/lib/discounts";
 
 // Server-side: validates prices/stock from the DB, never trusts the client.
 export async function POST(req: NextRequest) {
@@ -54,10 +55,32 @@ export async function POST(req: NextRequest) {
   const { data: settingsRows } = await supabase.from("site_settings").select("key,value");
   const settings = Object.fromEntries((settingsRows ?? []).map((s) => [s.key, s.value]));
   const intlCents = Math.max(0, parseInt(settings.shipping_intl_cents ?? "1500", 10) || 1500);
-  const shippingOptions: Stripe.Checkout.SessionCreateParams.ShippingOption[] = [
+  let shippingOptions: Stripe.Checkout.SessionCreateParams.ShippingOption[] = [
     { shipping_rate_data: { display_name: settings.shipping_free_label ?? "Free Shipping (Australia)", type: "fixed_amount", fixed_amount: { amount: 0, currency: "aud" } } },
     { shipping_rate_data: { display_name: settings.shipping_intl_label ?? "International Shipping", type: "fixed_amount", fixed_amount: { amount: intlCents, currency: "aud" } } },
   ];
+
+  // cart-page discount code (validated server-side; anti-abuse checks inside)
+  const sid = typeof body?.sid === "string" ? body.sid.slice(0, 64) : "";
+  const subtotal = lineItems.reduce((n, li) => n + (li.price_data?.unit_amount ?? 0) * (li.quantity ?? 1), 0);
+  let discount: DiscountRow | null = null;
+  if (typeof body?.discount_code === "string" && body.discount_code.trim()) {
+    const result = await validateDiscount(body.discount_code, subtotal, sid);
+    if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
+    discount = result.row;
+    if (discount.kind === "free_shipping") {
+      shippingOptions = [
+        {
+          shipping_rate_data: {
+            display_name: `Free shipping — ${discount.code}`,
+            type: "fixed_amount",
+            fixed_amount: { amount: 0, currency: "aud" },
+          },
+        },
+      ];
+    }
+  }
+  const priceDiscount = discount && discount.kind !== "free_shipping" && discount.stripe_coupon_id;
 
   const origin = req.headers.get("origin") ?? "http://localhost:3000";
   const session = await stripe.checkout.sessions.create({
@@ -67,10 +90,16 @@ export async function POST(req: NextRequest) {
       allowed_countries: ["AU", "FR", "US", "GB", "CA", "NZ", "DE", "BE", "NL", "CH", "IT", "ES", "PT", "IE", "BR", "JP"],
     },
     shipping_options: shippingOptions,
-    allow_promotion_codes: true,
+    // Stripe forbids combining pre-applied discounts with the promo-code box
+    ...(priceDiscount
+      ? { discounts: [{ coupon: discount!.stripe_coupon_id! }] }
+      : discount
+        ? {}
+        : { allow_promotion_codes: true }),
     metadata: {
       cart: JSON.stringify(items.map((i) => ({ v: i.variantId, q: i.qty }))),
-      sid: typeof body?.sid === "string" ? body.sid.slice(0, 64) : "",
+      sid,
+      ...(discount ? { discount_code_id: String(discount.id), discount_code: discount.code } : {}),
     },
     success_url: `${origin}/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/cart`,

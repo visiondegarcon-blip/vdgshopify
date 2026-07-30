@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Header from "@/components/Header";
 import ProductClient from "./ProductClient";
 import { fetchProduct, fetchActiveProducts } from "@/lib/supabase";
-import { getSettings, jsonSetting } from "@/lib/theme";
+import { BUTTON_DEFAULTS, getSettings, jsonSetting } from "@/lib/theme";
 import LockScreen from "@/components/LockScreen";
 import { getActiveLock } from "@/lib/lock";
 
@@ -30,6 +30,7 @@ export default async function ProductPage({
     "content_product",
     { accordions: [] }
   );
+  const buttons = jsonSetting(settings, "content_buttons", BUTTON_DEFAULTS);
 
   return (
     <main className="t-surface min-h-screen">
@@ -38,6 +39,7 @@ export default async function ProductPage({
         product={product}
         nextHandle={next?.handle ?? handle}
         accordionOverrides={accordions.length ? accordions : undefined}
+        buttons={buttons}
       />
     </main>
   );

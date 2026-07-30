@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import HeroBackground from "@/components/HeroBackground";
 import { getSettings, jsonSetting } from "@/lib/theme";
 
 export const revalidate = 60;
@@ -15,10 +16,20 @@ const NAV_DEFAULTS = {
 
 export default async function Home() {
   const settings = await getSettings();
-  const { navLabels } = jsonSetting<{ navLabels: typeof NAV_DEFAULTS }>(settings, "content_home", {
+  const home = jsonSetting<{
+    navLabels: typeof NAV_DEFAULTS;
+    hero_images: string[];
+    hero_mobile: string;
+    hero_rotate: boolean;
+    hero_interval_s: number;
+  }>(settings, "content_home", {
     navLabels: NAV_DEFAULTS,
+    hero_images: [],
+    hero_mobile: "/site/hero-mobile.jpg",
+    hero_rotate: false,
+    hero_interval_s: 8,
   });
-  const labels = { ...NAV_DEFAULTS, ...navLabels };
+  const labels = { ...NAV_DEFAULTS, ...home.navLabels };
   const nav = [
     { label: labels.globe, href: "https://globe.visiondegarcon.com", external: true },
     { label: labels.store, href: "/store" },
@@ -29,21 +40,11 @@ export default async function Home() {
   ];
   return (
     <main className="relative min-h-screen w-full overflow-hidden">
-      <Image
-        src="/site/hero-desktop.png"
-        alt=""
-        fill
-        priority
-        sizes="100vw"
-        className="hidden object-cover md:block"
-      />
-      <Image
-        src="/site/hero-mobile.jpg"
-        alt=""
-        fill
-        priority
-        sizes="100vw"
-        className="object-cover md:hidden"
+      <HeroBackground
+        desktop={home.hero_images.filter(Boolean)}
+        mobile={home.hero_mobile || "/site/hero-mobile.jpg"}
+        rotate={home.hero_rotate}
+        intervalS={home.hero_interval_s}
       />
       <div className="relative z-10 flex flex-col items-center pt-[27vh]">
         <Image

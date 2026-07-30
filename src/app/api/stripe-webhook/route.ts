@@ -78,6 +78,19 @@ export async function POST(req: NextRequest) {
       await admin.rpc("decrement_stock", { v_id: c.v, qty: c.q });
     }
 
+    // record discount redemption for anti-abuse limits (one-per-customer etc.)
+    const codeId = Number(session.metadata?.discount_code_id);
+    if (codeId) {
+      await admin.from("discount_redemptions").insert({
+        code_id: codeId,
+        email,
+        sid: session.metadata?.sid || null,
+        order_id: order.id,
+      });
+      const { data: dc } = await admin.from("discount_codes").select("uses").eq("id", codeId).single();
+      await admin.from("discount_codes").update({ uses: (dc?.uses ?? 0) + 1 }).eq("id", codeId);
+    }
+
     // server-authoritative purchase event for analytics, tied to the
     // storefront session via checkout metadata
     const sid = session.metadata?.sid;

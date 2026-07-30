@@ -78,6 +78,52 @@ export async function getActiveTheme(previewThemeId?: string): Promise<ThemeToke
   return { ...DEFAULT_TOKENS, ...(rows?.[0]?.tokens ?? {}) };
 }
 
+export type ButtonsConfig = {
+  add_to_cart: string;
+  sold_out: string;
+  view_cart: string;
+  checkout: string;
+  uppercase: boolean;
+  radius: string; // e.g. "0px", "8px", "999px"
+  style: "fill" | "outline";
+};
+export const BUTTON_DEFAULTS: ButtonsConfig = {
+  add_to_cart: "Add To Cart",
+  sold_out: "Sold Out",
+  view_cart: "View Cart",
+  checkout: "Checkout",
+  uppercase: false,
+  radius: "",
+  style: "fill",
+};
+
+export type FontsConfig = { head: ThemeTokens["fontHead"] | ""; body: ThemeTokens["fontBody"] | "" };
+
+/* Editor overrides (fonts + button style) layered on top of the active theme.
+   Returns the merged tokens plus extra CSS vars for .t-btn. */
+export function applyContentOverrides(
+  tokens: ThemeTokens,
+  settings: Record<string, string>
+): { tokens: ThemeTokens; extraVars: Record<string, string>; buttons: ButtonsConfig } {
+  const fonts = jsonSetting<FontsConfig>(settings, "content_fonts", { head: "", body: "" });
+  const buttons = jsonSetting<ButtonsConfig>(settings, "content_buttons", BUTTON_DEFAULTS);
+  const merged: ThemeTokens = {
+    ...tokens,
+    ...(fonts.head && FONT_VARS[fonts.head] ? { fontHead: fonts.head } : {}),
+    ...(fonts.body && FONT_VARS[fonts.body] ? { fontBody: fonts.body } : {}),
+    ...(buttons.radius ? { radius: buttons.radius } : {}),
+  };
+  const extraVars: Record<string, string> = {
+    "--vdg-btn-transform": buttons.uppercase ? "uppercase" : "none",
+  };
+  if (buttons.style === "outline") {
+    extraVars["--vdg-btn-border"] = `2px solid ${tokens.btnBg}`;
+    extraVars["--vdg-btn-bg"] = "transparent";
+    extraVars["--vdg-btn-fg"] = tokens.btnBg;
+  }
+  return { tokens: merged, extraVars, buttons };
+}
+
 export function themeStyle(t: ThemeTokens): React.CSSProperties {
   return {
     "--vdg-bg": t.bg,

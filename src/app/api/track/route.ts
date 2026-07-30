@@ -17,6 +17,7 @@ const ALLOWED = new Set([
   "page_view",
   "product_view",
   "add_to_cart",
+  "variant_click",
   "checkout_started",
   "web_vital",
   "click",

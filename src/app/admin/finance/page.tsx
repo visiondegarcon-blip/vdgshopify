@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { adminCall, fmt } from "../adminApi";
+import SalesChart from "../SalesChart";
 
 type Overview = {
   gross: number; discounts: number; refunds: number; orderCount: number;
@@ -250,6 +251,14 @@ export default function FinancePage() {
               </table>
 
               <div className="mt-8 text-sm font-semibold">Monthly breakdown</div>
+              {Object.keys(eofy.monthly).length > 0 && (
+                <div className="mt-2 max-w-xl print:hidden">
+                  <SalesChart
+                    series={Object.entries(eofy.monthly).sort().map(([m, v]) => [m, v.gross] as [string, number])}
+                    height={120}
+                  />
+                </div>
+              )}
               <table className="mt-2 w-full max-w-md text-sm">
                 <thead className="text-xs text-gray-500">
                   <tr><th className="py-1 text-left">Month</th><th className="text-right">Gross</th><th className="text-right">Orders</th></tr>

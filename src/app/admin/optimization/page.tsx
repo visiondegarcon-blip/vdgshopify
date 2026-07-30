@@ -16,7 +16,39 @@ type Opt = {
   soldOutDemand: [string, number][];
   pairs: [string, number][];
   hourHeat: number[][];
+  sizesClicked: { product: string; sizes: [string, number][] }[];
+  sizesCarted: { product: string; sizes: [string, number][] }[];
+  sizesSold: { product: string; sizes: [string, number][] }[];
+  atcRates: { product: string; viewed: number; carted: number; rate: number }[];
+  landing: [string, number][];
+  exits: [string, number][];
+  trafficHeat: number[][];
+  devices: [string, number][];
+  returningVisitors: number;
+  newVisitors: number;
 };
+
+function SizeCard({ title, hint, rows }: { title: string; hint: string; rows: { product: string; sizes: [string, number][] }[] }) {
+  return (
+    <Card title={title} hint={hint}>
+      <div className="flex flex-col gap-3">
+        {rows.slice(0, 6).map((r) => (
+          <div key={r.product}>
+            <div className="truncate text-[12px] font-medium">{r.product}</div>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {r.sizes.map(([size, n]) => (
+                <span key={size} className="rounded-md bg-gray-100 px-2 py-0.5 text-[11px]">
+                  {size} <span className="text-gray-500">×{n}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+        {rows.length === 0 && <p className="text-sm text-gray-400">No data in this range yet.</p>}
+      </div>
+    </Card>
+  );
+}
 
 const RANGES = { "7d": 7, "30d": 30, "90d": 90, All: 3650 } as const;
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -184,6 +216,97 @@ export default function OptimizationPage() {
               </ul>
             </Card>
           </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <SizeCard title="Sizes sold" hint="units per size, from all orders incl. Shopify history" rows={d.sizesSold} />
+            <SizeCard title="Sizes clicked" hint="size selections on product pages (new-site tracking)" rows={d.sizesClicked} />
+            <SizeCard title="Sizes added to cart" hint="what people cart after clicking (new-site tracking)" rows={d.sizesCarted} />
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <Card title="Add-to-cart rate" hint="sessions that carted a product / sessions that viewed it">
+              <table className="w-full text-sm">
+                <thead className="text-left text-[11px] uppercase tracking-wide text-gray-400">
+                  <tr><th>Product</th><th className="text-right">Viewed</th><th className="text-right">Carted</th><th className="text-right">Rate</th></tr>
+                </thead>
+                <tbody>
+                  {d.atcRates.map((r) => (
+                    <tr key={r.product} className="border-t border-gray-100">
+                      <td className="max-w-[200px] truncate py-1.5">{r.product}</td>
+                      <td className="text-right">{r.viewed}</td>
+                      <td className="text-right">{r.carted}</td>
+                      <td className="text-right font-semibold">{r.rate}%</td>
+                    </tr>
+                  ))}
+                  {d.atcRates.length === 0 && <tr><td colSpan={4} className="py-4 text-center text-gray-400">No product traffic yet.</td></tr>}
+                </tbody>
+              </table>
+            </Card>
+
+            <Card title="Visitors" hint="within this range vs the previous period">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-[12px] text-gray-600">New visitors</div>
+                  <div className="mt-1 text-2xl font-semibold">{d.newVisitors}</div>
+                </div>
+                <div>
+                  <div className="text-[12px] text-gray-600">Returning visitors</div>
+                  <div className="mt-1 text-2xl font-semibold">{d.returningVisitors}</div>
+                </div>
+              </div>
+              <div className="mt-4 text-[12px] font-semibold text-gray-600">Devices</div>
+              <ul className="mt-1.5 flex flex-col gap-1.5 text-sm">
+                {d.devices.map(([dev, n]) => (
+                  <li key={dev} className="flex items-center gap-2">
+                    <span className="w-20 shrink-0 capitalize">{dev}</span>
+                    <div className="h-2 flex-1 overflow-hidden rounded bg-gray-100">
+                      <div className="h-full bg-[#1a1a1a]" style={{ width: `${(n / Math.max(d.sessions, 1)) * 100}%` }} />
+                    </div>
+                    <span className="w-8 text-right text-gray-500">{n}</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+
+            <Card title="Top landing pages" hint="first page of each session">
+              <ul className="flex flex-col gap-1.5 font-mono text-[12px]">
+                {d.landing.map(([p, n]) => (
+                  <li key={p} className="flex justify-between"><span className="truncate">{p}</span><span className="ml-3 text-gray-500">{n}</span></li>
+                ))}
+                {d.landing.length === 0 && <li className="text-gray-400">No sessions yet.</li>}
+              </ul>
+            </Card>
+
+            <Card title="Top exit pages" hint="last page before leaving — where you lose people">
+              <ul className="flex flex-col gap-1.5 font-mono text-[12px]">
+                {d.exits.map(([p, n]) => (
+                  <li key={p} className="flex justify-between"><span className="truncate">{p}</span><span className="ml-3 text-gray-500">{n}</span></li>
+                ))}
+                {d.exits.length === 0 && <li className="text-gray-400">No sessions yet.</li>}
+              </ul>
+            </Card>
+          </div>
+
+          <Card title="Traffic by hour (UTC)" hint="page views — rows are days, columns are hours">
+            <div className="flex flex-col gap-[3px]">
+              {d.trafficHeat.map((row, day) => {
+                const maxT = Math.max(1, ...d.trafficHeat.flat());
+                return (
+                  <div key={day} className="flex items-center gap-[3px]">
+                    <span className="w-8 text-[10px] text-gray-400">{DAYS[day]}</span>
+                    {row.map((v, h) => (
+                      <div
+                        key={h}
+                        title={`${DAYS[day]} ${h}:00 — ${v} views`}
+                        className="h-4 flex-1 rounded-[2px]"
+                        style={{ background: v ? `rgba(10,93,240,${0.15 + 0.85 * (v / maxT)})` : "#f3f4f6" }}
+                      />
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
 
           <a
             href="/admin/optimization/journeys"

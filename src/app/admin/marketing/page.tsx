@@ -10,12 +10,23 @@ import DragImage from "../DragImage";
 type PopupCfg = {
   enabled: boolean; scroll_percent: number; heading: string; body: string; image: string;
   image_pos: string; bg: string; fg: string; accent: string; discount_code: string; collect_phone: boolean;
+  font_head: string; font_body: string;
 };
 const POPUP_DEFAULTS: PopupCfg = {
   enabled: false, scroll_percent: 30, heading: "JOIN THE VISION",
   body: "Sign up and get a discount code for your first order.",
   image: "", image_pos: "50% 50%", bg: "#000000", fg: "#ffffff", accent: "#FE0000", discount_code: "", collect_phone: false,
+  font_head: "", font_body: "",
 };
+const SITE_FONTS = [
+  ["", "Site default"],
+  ["inconsolata", "Inconsolata (mono)"],
+  ["platypi", "Platypi (serif)"],
+  ["oswald", "Oswald (condensed)"],
+  ["gochi", "Gochi Hand (marker)"],
+  ["orbitron", "Orbitron (futuristic)"],
+] as const;
+const fontVar = (k: string) => (k ? `var(--font-${k})` : undefined);
 
 type Subscriber = {
   id: number; email: string; phone: string | null; source: string;
@@ -29,7 +40,16 @@ type Block =
   | { type: "image"; url: string }
   | { type: "button"; text: string; url: string };
 
-type Template = { id: number; name: string; blocks: Block[] };
+type EmailFont = "mono" | "serif" | "sans" | "times";
+type Template = { id: number; name: string; blocks: Block[]; font?: EmailFont };
+
+// email-safe stacks only — custom webfonts don't load reliably in mail clients
+const EMAIL_FONTS: Record<EmailFont, { label: string; head: string; body: string }> = {
+  mono: { label: "Monospace (current look)", head: "monospace", body: "Georgia,serif" },
+  serif: { label: "Serif (Georgia)", head: "Georgia,serif", body: "Georgia,serif" },
+  sans: { label: "Sans-serif (Arial)", head: "Arial,Helvetica,sans-serif", body: "Arial,Helvetica,sans-serif" },
+  times: { label: "Times", head: "'Times New Roman',Times,serif", body: "'Times New Roman',Times,serif" },
+};
 type Campaign = {
   id: number; name: string; subject: string; status: string; template_id: number | null;
   sent_at: string | null; email_templates: { name: string } | null;
@@ -39,25 +59,26 @@ const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 const safeUrl = (u: string) => (/^https?:\/\/|^\//.test(u.trim()) ? escapeHtml(u.trim()) : "#");
 
-export function blocksToHtml(blocks: Block[]): string {
+export function blocksToHtml(blocks: Block[], font: EmailFont = "mono"): string {
+  const f = EMAIL_FONTS[font] ?? EMAIL_FONTS.mono;
   const parts = blocks.map((b) => {
     switch (b.type) {
       case "logo":
         return `<tr><td align="center" style="padding:24px 0"><img src="https://vdg-store.vercel.app/site/logo-black.png" height="120" alt="VDG"/></td></tr>`;
       case "heading":
-        return `<tr><td align="center" style="padding:8px 24px;font-family:monospace;font-size:22px;font-weight:bold;letter-spacing:3px">${escapeHtml(b.text)}</td></tr>`;
+        return `<tr><td align="center" style="padding:8px 24px;font-family:${f.head};font-size:22px;font-weight:bold;letter-spacing:3px">${escapeHtml(b.text)}</td></tr>`;
       case "text":
-        return `<tr><td style="padding:8px 24px;font-family:Georgia,serif;font-size:14px;line-height:1.7">${escapeHtml(b.text).replace(/\n/g, "<br/>")}</td></tr>`;
+        return `<tr><td style="padding:8px 24px;font-family:${f.body};font-size:14px;line-height:1.7">${escapeHtml(b.text).replace(/\n/g, "<br/>")}</td></tr>`;
       case "image":
         return b.url
           ? `<tr><td align="center" style="padding:8px 0"><img src="${safeUrl(b.url)}" width="100%" style="max-width:552px" alt=""/></td></tr>`
           : "";
       case "button":
-        return `<tr><td align="center" style="padding:16px"><a href="${safeUrl(b.url)}" style="background:#000;color:#fff;padding:12px 28px;font-family:monospace;font-size:13px;text-decoration:none;letter-spacing:2px">${escapeHtml(b.text)}</a></td></tr>`;
+        return `<tr><td align="center" style="padding:16px"><a href="${safeUrl(b.url)}" style="background:#000;color:#fff;padding:12px 28px;font-family:${f.head};font-size:13px;text-decoration:none;letter-spacing:2px">${escapeHtml(b.text)}</a></td></tr>`;
     }
   });
   return `<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#fff">${parts.join("")}
-<tr><td align="center" style="padding:28px 24px;font-family:monospace;font-size:10px;color:#999">Vision De Garçon · You're receiving this because you signed up at visiondegarcon.fr<br/><a href="{{unsubscribe_url}}" style="color:#999">Unsubscribe</a></td></tr></table>`;
+<tr><td align="center" style="padding:28px 24px;font-family:${f.head};font-size:10px;color:#999">Vision De Garçon · You're receiving this because you signed up at visiondegarcon.fr<br/><a href="{{unsubscribe_url}}" style="color:#999">Unsubscribe</a></td></tr></table>`;
 }
 
 export default function MarketingPage() {
@@ -187,6 +208,27 @@ export default function MarketingPage() {
                   Phone field
                 </label>
               </div>
+              <div className="flex gap-3">
+                {(
+                  [
+                    ["font_head", "Heading font"],
+                    ["font_body", "Body font"],
+                  ] as const
+                ).map(([k, l]) => (
+                  <label key={k} className="flex-1 text-[12px]">
+                    {l}
+                    <select
+                      value={popup[k]}
+                      onChange={(e) => savePopup({ [k]: e.target.value })}
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                    >
+                      {SITE_FONTS.map(([v, name]) => (
+                        <option key={v} value={v}>{name}</option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -199,7 +241,7 @@ export default function MarketingPage() {
                 <img src={popup.image} alt="" className="hidden h-full min-h-[260px] w-full object-cover sm:block" style={{ objectPosition: popup.image_pos || "50% 50%" }} />
               )}
               <div className="flex flex-col justify-center p-5 text-center">
-                <div className="text-[15px] font-bold leading-snug" style={{ fontFamily: "var(--vdg-font-body, serif)" }}>{popup.heading}</div>
+                <div className="text-[15px] font-bold leading-snug" style={{ fontFamily: fontVar(popup.font_head) ?? "var(--vdg-font-body, serif)" }}>{popup.heading}</div>
                 <p className="mt-2 text-[11px] italic opacity-85">{popup.body}</p>
                 <div className="mt-3 rounded bg-white px-3 py-1.5 text-left">
                   <div className="text-[9px] text-gray-500">Email</div>
@@ -369,6 +411,7 @@ export default function MarketingPage() {
 function TemplateEditor({ template, onClose }: { template: Template; onClose: () => void }) {
   const [name, setName] = useState(template.name);
   const [blocks, setBlocks] = useState<Block[]>(template.blocks);
+  const [font, setFont] = useState<EmailFont>(template.font ?? "mono");
   const [saving, setSaving] = useState(false);
 
   const update = (i: number, b: Block) => setBlocks(blocks.map((x, j) => (j === i ? b : x)));
@@ -388,7 +431,7 @@ function TemplateEditor({ template, onClose }: { template: Template; onClose: ()
           <button
             onClick={async () => {
               setSaving(true);
-              await adminCall("save_template", { id: template.id || undefined, name, blocks });
+              await adminCall("save_template", { id: template.id || undefined, name, blocks, font });
               setSaving(false);
               onClose();
             }}
@@ -399,6 +442,18 @@ function TemplateEditor({ template, onClose }: { template: Template; onClose: ()
           </button>
         </div>
         <input value={name} onChange={(e) => setName(e.target.value)} className="mt-3 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium" />
+        <label className="mt-2 block text-[11px] text-gray-500">
+          Font (email-safe only — mail apps can&apos;t load custom fonts)
+          <select
+            value={font}
+            onChange={(e) => setFont(e.target.value as EmailFont)}
+            className="mt-0.5 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
+          >
+            {(Object.keys(EMAIL_FONTS) as EmailFont[]).map((k) => (
+              <option key={k} value={k}>{EMAIL_FONTS[k].label}</option>
+            ))}
+          </select>
+        </label>
         <div className="mt-4 flex flex-col gap-3">
           {blocks.map((b, i) => (
             <div key={i} className="rounded-lg border border-gray-200 p-3">
@@ -451,7 +506,7 @@ function TemplateEditor({ template, onClose }: { template: Template; onClose: ()
       </div>
       <div className="overflow-auto rounded-xl bg-gray-200 p-6 shadow-inner">
         <div className="text-center text-[11px] text-gray-500">Email preview</div>
-        <div className="mt-3" dangerouslySetInnerHTML={{ __html: blocksToHtml(blocks) }} />
+        <div className="mt-3" dangerouslySetInnerHTML={{ __html: blocksToHtml(blocks, font) }} />
       </div>
     </div>
   );

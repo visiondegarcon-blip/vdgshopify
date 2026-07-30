@@ -6,7 +6,7 @@ import MusicPlayer from "@/components/MusicPlayer";
 import Tracker from "@/components/Tracker";
 import ThemePreview from "@/components/ThemePreview";
 import ScrollPopup from "@/components/ScrollPopup";
-import { getActiveTheme, themeStyle } from "@/lib/theme";
+import { applyContentOverrides, getActiveTheme, getSettings, themeStyle } from "@/lib/theme";
 
 const inconsolata = Inconsolata({ subsets: ["latin"], variable: "--font-inconsolata" });
 const platypi = Platypi({ subsets: ["latin"], variable: "--font-platypi" });
@@ -21,12 +21,13 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const theme = await getActiveTheme();
+  const [baseTheme, settings] = await Promise.all([getActiveTheme(), getSettings()]);
+  const { tokens: theme, extraVars } = applyContentOverrides(baseTheme, settings);
   return (
     <html
       lang="en"
       className={`${inconsolata.variable} ${platypi.variable} ${oswald.variable} ${gochi.variable} ${orbitron.variable} h-full antialiased`}
-      style={themeStyle(theme)}
+      style={{ ...themeStyle(theme), ...extraVars } as React.CSSProperties}
     >
       <body className={`min-h-full flex flex-col vdg-texture-${theme.texture}`}>
         <CartProvider>

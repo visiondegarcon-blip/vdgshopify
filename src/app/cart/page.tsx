@@ -1,16 +1,48 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import Header from "@/components/Header";
 import { useCart } from "@/lib/cart";
-import { fmtPrice } from "@/lib/supabase";
+import { fmtPrice, supabase } from "@/lib/supabase";
 import { sessionId, track } from "@/lib/track";
 
 export default function CartPage() {
   const { items, remove, setQty, totalCents } = useCart();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checkoutLabel, setCheckoutLabel] = useState("Checkout");
+  const [code, setCode] = useState("");
+  const [applied, setApplied] = useState<{ code: string; description: string } | null>(null);
+  const [codeMsg, setCodeMsg] = useState<string | null>(null);
+
+  const applyCode = async () => {
+    setCodeMsg(null);
+    setApplied(null);
+    if (!code.trim()) return;
+    const res = await fetch("/api/validate-discount", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, subtotalCents: totalCents, sid: sessionId() }),
+    });
+    const j = await res.json();
+    if (!res.ok) return setCodeMsg(j.error ?? "That code isn't valid.");
+    setApplied({ code: j.code, description: j.description });
+  };
+
+  useEffect(() => {
+    supabase
+      .from("site_settings")
+      .select("value")
+      .eq("key", "content_buttons")
+      .maybeSingle()
+      .then(({ data }) => {
+        try {
+          const c = JSON.parse(data?.value ?? "{}");
+          if (c.checkout) setCheckoutLabel(c.checkout);
+        } catch {}
+      });
+  }, []);
 
   const checkout = async () => {
     setLoading(true);
@@ -23,6 +55,7 @@ export default function CartPage() {
         body: JSON.stringify({
           items: items.map((i) => ({ variantId: i.variantId, qty: i.qty })),
           sid: sessionId(),
+          discount_code: applied?.code ?? "",
         }),
       });
       const data = await res.json();
@@ -77,7 +110,29 @@ export default function CartPage() {
                 </li>
               ))}
             </ul>
-            <div className="mt-8 flex items-center justify-between border-t border-black pt-4">
+            <div className="mt-6 flex gap-2 border-t border-black pt-4">
+              <input
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                placeholder="Discount code"
+                className="w-full border border-black px-3 py-2 font-mono text-sm uppercase"
+              />
+              <button onClick={applyCode} className="t-btn shrink-0 px-4 py-2 text-sm">
+                Apply
+              </button>
+            </div>
+            {codeMsg && <p className="mt-2 text-xs text-[#a51b1b]">{codeMsg}</p>}
+            {applied && (
+              <p className="mt-2 flex items-center justify-between text-xs">
+                <span>
+                  ✓ <span className="font-mono font-bold">{applied.code}</span> — {applied.description}, applied at checkout
+                </span>
+                <button onClick={() => { setApplied(null); setCode(""); }} className="underline">
+                  Remove
+                </button>
+              </p>
+            )}
+            <div className="mt-4 flex items-center justify-between">
               <span className="text-sm">Total</span>
               <span className="font-semibold">{fmtPrice(totalCents)} AUD</span>
             </div>
@@ -87,7 +142,7 @@ export default function CartPage() {
               disabled={loading}
               className="t-btn mt-4 w-full py-3 text-sm disabled:opacity-60"
             >
-              {loading ? "Redirecting…" : "Checkout"}
+              {loading ? "Redirecting…" : checkoutLabel}
             </button>
             <p className="mt-2 text-center text-xs text-gray-500">
               Secure payment via Stripe · Free shipping Australia/France

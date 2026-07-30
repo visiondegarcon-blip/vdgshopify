@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { adminCall, fmt } from "../adminApi";
 import LiveView from "./LiveView";
+import SalesChart from "../SalesChart";
 
 type Order = {
   id: number; total_cents: number; status: string; created_at: string; email: string;
@@ -74,8 +75,6 @@ export default function AnalyticsPage() {
     };
   }, [orders, range]);
 
-  const max = Math.max(...data.series.map(([, v]) => v), 1);
-
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -131,22 +130,8 @@ export default function AnalyticsPage() {
 
       <div className="mt-4 rounded-xl bg-white p-5 shadow-sm">
         <div className="text-sm font-semibold">Total sales over time</div>
-        <div className="mt-4 flex h-40 items-end gap-[2px]">
-          {data.series.map(([day, cents]) => (
-            <div key={day} className="group relative flex-1">
-              <div
-                className="w-full rounded-t-sm bg-[#0a5df0]/80 transition-colors group-hover:bg-[#0a5df0]"
-                style={{ height: `${(cents / max) * 100}%`, minHeight: cents > 0 ? 3 : 0 }}
-              />
-              <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded bg-black px-1.5 py-0.5 text-[10px] text-white group-hover:block">
-                {day}: {fmt(cents)}
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="mt-2 flex justify-between text-[10px] text-gray-500">
-          <span>{data.series[0]?.[0]}</span>
-          <span>{data.series[data.series.length - 1]?.[0]}</span>
+        <div className="mt-1">
+          <SalesChart series={data.series} height={160} />
         </div>
       </div>
 

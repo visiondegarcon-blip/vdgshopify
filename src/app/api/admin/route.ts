@@ -261,7 +261,7 @@ export async function POST(req: NextRequest) {
       }
 
       case "optimization": {
-        const days = Math.min(Number(body.days) || 30, 180);
+        const days = Math.min(Number(body.days) || 30, 3650);
         const cutoff = new Date(Date.now() - days * 864e5).toISOString();
         const prevCutoff = new Date(Date.now() - 2 * days * 864e5).toISOString();
         const { data: events } = await db

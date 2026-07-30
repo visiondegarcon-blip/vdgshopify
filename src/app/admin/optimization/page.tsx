@@ -18,7 +18,7 @@ type Opt = {
   hourHeat: number[][];
 };
 
-const RANGES = { "7d": 7, "30d": 30, "90d": 90 } as const;
+const RANGES = { "7d": 7, "30d": 30, "90d": 90, All: 3650 } as const;
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function Card({ title, children, hint }: { title: string; hint?: string; children: React.ReactNode }) {

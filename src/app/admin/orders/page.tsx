@@ -9,6 +9,8 @@ type Order = {
   currency: string;
   status: string;
   fulfillment_status: string;
+  source?: string;
+  stripe_session_id?: string;
   shipping_name: string | null;
   shipping_address: Record<string, string | null> | null;
   created_at: string;
@@ -61,7 +63,14 @@ export default function OrdersPage() {
                   onClick={() => setOpen(open === o.id ? null : o.id)}
                   className="cursor-pointer border-b border-gray-100 hover:bg-gray-50"
                 >
-                  <td className="px-4 py-2.5 font-semibold">#{o.id}</td>
+                  <td className="px-4 py-2.5 font-semibold">
+                    {o.stripe_session_id?.startsWith("shopify-") ? o.stripe_session_id.replace("shopify-", "") : `#${o.id}`}
+                    {o.source === "shopify" && (
+                      <span className="ml-2 rounded bg-[#d4f7d4] px-1.5 py-0.5 text-[10px] font-semibold text-[#0a6b2d]">
+                        Shopify
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5">{new Date(o.created_at).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" })}</td>
                   <td className="px-4 py-2.5">{o.shipping_name ?? o.email}</td>
                   <td className="px-4 py-2.5">{fmt(o.total_cents, o.currency)}</td>

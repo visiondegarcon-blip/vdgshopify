@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { blocksToHtml, blocksToText, type Block, type EmailFont } from "@/lib/emailHtml";
+import { DEFAULT_FROM, sendCampaignEmails, sendOne, siteUrl } from "@/lib/resendSend";
 
 /* Single admin endpoint. Every call must carry the caller's Supabase access
    token; we verify it server-side and check the email against the allowlist
@@ -278,6 +280,7 @@ export async function POST(req: NextRequest) {
           "content_fonts",
           "lock_config",
           "popup_config",
+          "email_from",
         ];
         for (const [key, value] of Object.entries(settings ?? {})) {
           if (!allowed.includes(key)) continue;
@@ -590,13 +593,75 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ id: data.id });
       }
 
+      case "send_test_email": {
+        // Preview a campaign in a real inbox before it goes to subscribers.
+        const { campaignId, to } = body;
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(to ?? ""))) throw new Error("Enter a valid email address.");
+        const { data: campaign } = await db
+          .from("campaigns")
+          .select("*, email_templates(blocks,font)")
+          .eq("id", campaignId)
+          .single();
+        if (!campaign) throw new Error("Campaign not found.");
+        const tpl = campaign.email_templates as { blocks: Block[]; font?: EmailFont } | null;
+        if (!tpl) throw new Error("This campaign has no template attached yet.");
+        const { data: fromRow } = await db.from("site_settings").select("value").eq("key", "email_from").maybeSingle();
+        const from = fromRow?.value || DEFAULT_FROM;
+        const url = `${siteUrl()}/unsubscribe?token=test`;
+        await sendOne({
+          from,
+          to: String(to),
+          subject: `[TEST] ${campaign.subject || campaign.name}`,
+          html: blocksToHtml(tpl.blocks ?? [], tpl.font ?? "mono").replaceAll("{{unsubscribe_url}}", url),
+          text: blocksToText(tpl.blocks ?? []).replaceAll("{{unsubscribe_url}}", url),
+        });
+        return NextResponse.json({ ok: true, to, from });
+      }
+
       case "send_campaign": {
-        // Deliberate placeholder until Daniel picks an email provider
-        // (Resend account exists but visiondegarcon.fr is not verified there).
-        return NextResponse.json(
-          { error: "Sending not connected yet — choose an email provider (e.g. verify visiondegarcon.fr in Resend), then this button goes live." },
-          { status: 501 }
-        );
+        const { id, force } = body;
+        const { data: campaign } = await db
+          .from("campaigns")
+          .select("*, email_templates(blocks,font)")
+          .eq("id", id)
+          .single();
+        if (!campaign) throw new Error("Campaign not found.");
+        if (campaign.status === "sent" && !force)
+          throw new Error("This campaign was already sent. Duplicate sends are blocked.");
+        const tpl = campaign.email_templates as { blocks: Block[]; font?: EmailFont } | null;
+        if (!tpl) throw new Error("Attach a template to this campaign first.");
+        if (!campaign.subject) throw new Error("Give this campaign a subject line first.");
+
+        const { data: subs } = await db
+          .from("subscribers")
+          .select("email,unsubscribe_token")
+          .is("unsubscribed_at", null);
+        const recipients = (subs ?? [])
+          .filter((s) => s.email && s.email.includes("@"))
+          .map((s) => ({ email: s.email as string, unsubscribeToken: s.unsubscribe_token as string | null }));
+        if (!recipients.length) throw new Error("No subscribed contacts to send to.");
+
+        const { data: fromRow } = await db.from("site_settings").select("value").eq("key", "email_from").maybeSingle();
+        const from = fromRow?.value || DEFAULT_FROM;
+
+        const result = await sendCampaignEmails({
+          from,
+          subject: campaign.subject,
+          html: blocksToHtml(tpl.blocks ?? [], tpl.font ?? "mono"),
+          text: blocksToText(tpl.blocks ?? []),
+          recipients,
+        });
+
+        if (result.sent === 0) throw new Error(result.errors[0] ?? "Nothing was sent.");
+        await db
+          .from("campaigns")
+          .update({
+            status: result.failed ? "partially_sent" : "sent",
+            sent_at: new Date().toISOString(),
+            recipient_count: result.sent,
+          })
+          .eq("id", id);
+        return NextResponse.json(result);
       }
 
       case "delete_campaign": {

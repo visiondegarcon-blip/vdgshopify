@@ -2,10 +2,11 @@
 import { useEffect, useRef, useState } from "react";
 import { adminCall } from "../adminApi";
 import DragImage from "../DragImage";
+import { EMAIL_FONTS, blocksToHtml, type Block, type EmailFont } from "@/lib/emailHtml";
 
 /* Marketing: scroll-popup builder, audience (subscribers), campaigns with a
-   block-based email template maker. Campaign sending is a placeholder until
-   an email provider is connected. */
+   block-based email template maker. Campaigns send through Resend using our
+   own subscriber list and per-recipient unsubscribe tokens. */
 
 type PopupCfg = {
   enabled: boolean; scroll_percent: number; heading: string; body: string; image: string;
@@ -33,53 +34,12 @@ type Subscriber = {
   consented_at: string; unsubscribed_at: string | null;
 };
 
-type Block =
-  | { type: "logo" }
-  | { type: "heading"; text: string }
-  | { type: "text"; text: string }
-  | { type: "image"; url: string }
-  | { type: "button"; text: string; url: string };
-
-type EmailFont = "mono" | "serif" | "sans" | "times";
 type Template = { id: number; name: string; blocks: Block[]; font?: EmailFont };
-
-// email-safe stacks only — custom webfonts don't load reliably in mail clients
-const EMAIL_FONTS: Record<EmailFont, { label: string; head: string; body: string }> = {
-  mono: { label: "Monospace (current look)", head: "monospace", body: "Georgia,serif" },
-  serif: { label: "Serif (Georgia)", head: "Georgia,serif", body: "Georgia,serif" },
-  sans: { label: "Sans-serif (Arial)", head: "Arial,Helvetica,sans-serif", body: "Arial,Helvetica,sans-serif" },
-  times: { label: "Times", head: "'Times New Roman',Times,serif", body: "'Times New Roman',Times,serif" },
-};
 type Campaign = {
   id: number; name: string; subject: string; status: string; template_id: number | null;
   sent_at: string | null; email_templates: { name: string } | null;
 };
 
-const escapeHtml = (s: string) =>
-  s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-const safeUrl = (u: string) => (/^https?:\/\/|^\//.test(u.trim()) ? escapeHtml(u.trim()) : "#");
-
-export function blocksToHtml(blocks: Block[], font: EmailFont = "mono"): string {
-  const f = EMAIL_FONTS[font] ?? EMAIL_FONTS.mono;
-  const parts = blocks.map((b) => {
-    switch (b.type) {
-      case "logo":
-        return `<tr><td align="center" style="padding:24px 0"><img src="https://vdg-store.vercel.app/site/logo-black.png" height="120" alt="VDG"/></td></tr>`;
-      case "heading":
-        return `<tr><td align="center" style="padding:8px 24px;font-family:${f.head};font-size:22px;font-weight:bold;letter-spacing:3px">${escapeHtml(b.text)}</td></tr>`;
-      case "text":
-        return `<tr><td style="padding:8px 24px;font-family:${f.body};font-size:14px;line-height:1.7">${escapeHtml(b.text).replace(/\n/g, "<br/>")}</td></tr>`;
-      case "image":
-        return b.url
-          ? `<tr><td align="center" style="padding:8px 0"><img src="${safeUrl(b.url)}" width="100%" style="max-width:552px" alt=""/></td></tr>`
-          : "";
-      case "button":
-        return `<tr><td align="center" style="padding:16px"><a href="${safeUrl(b.url)}" style="background:#000;color:#fff;padding:12px 28px;font-family:${f.head};font-size:13px;text-decoration:none;letter-spacing:2px">${escapeHtml(b.text)}</a></td></tr>`;
-    }
-  });
-  return `<table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#fff">${parts.join("")}
-<tr><td align="center" style="padding:28px 24px;font-family:${f.head};font-size:10px;color:#999">Vision De Garçon · You're receiving this because you signed up at visiondegarcon.fr<br/><a href="{{unsubscribe_url}}" style="color:#999">Unsubscribe</a></td></tr></table>`;
-}
 
 export default function MarketingPage() {
   const [tab, setTab] = useState<"popup" | "audience" | "campaigns">("popup");
@@ -98,14 +58,49 @@ export default function MarketingPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [editing, setEditing] = useState<Template | null>(null);
   const [campMsg, setCampMsg] = useState<string | null>(null);
+  const [emailFrom, setEmailFrom] = useState("");
+  const [sending, setSending] = useState<number | null>(null);
 
   useEffect(() => {
     adminCall<{ settings: Record<string, string> }>("get_settings").then((r) => {
       try {
         setPopupBoth({ ...POPUP_DEFAULTS, ...JSON.parse(r.settings.popup_config ?? "{}") });
       } catch {}
+      setEmailFrom(r.settings.email_from ?? "");
     });
   }, []);
+
+  const sendTest = async (campaignId: number) => {
+    const to = prompt("Send a test copy to which email address?");
+    if (!to) return;
+    setCampMsg(null);
+    try {
+      await adminCall("send_test_email", { campaignId, to });
+      setCampMsg(`Test sent to ${to}. Check that inbox (and spam).`);
+    } catch (e) {
+      setCampMsg(e instanceof Error ? e.message : "Test send failed");
+    }
+  };
+
+  const sendCampaign = async (c: Campaign) => {
+    const live = subs?.filter((s) => !s.unsubscribed_at).length;
+    const who = live != null ? `${live} subscriber${live === 1 ? "" : "s"}` : "all current subscribers";
+    if (!confirm(`Send "${c.name}" to ${who}? This cannot be undone.`)) return;
+    setSending(c.id);
+    setCampMsg(null);
+    try {
+      const r = await adminCall<{ sent: number; failed: number; errors: string[] }>("send_campaign", { id: c.id });
+      setCampMsg(
+        r.failed
+          ? `Sent to ${r.sent}, ${r.failed} failed — ${r.errors[0] ?? ""}`
+          : `Sent to ${r.sent} subscriber${r.sent === 1 ? "" : "s"}.`
+      );
+      refreshCampaigns();
+    } catch (e) {
+      setCampMsg(e instanceof Error ? e.message : "Send failed");
+    }
+    setSending(null);
+  };
 
   useEffect(() => {
     if (tab === "audience") adminCall<{ subscribers: Subscriber[] }>("list_subscribers").then((r) => setSubs(r.subscribers));
@@ -349,6 +344,27 @@ export default function MarketingPage() {
               </div>
               {campMsg && <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{campMsg}</p>}
 
+              <div className="mt-4 rounded-xl bg-white p-4 shadow-sm">
+                <label className="text-[12px] font-semibold">
+                  Sender address
+                  <input
+                    value={emailFrom}
+                    onChange={(e) => setEmailFrom(e.target.value)}
+                    onBlur={async () => {
+                      await adminCall("update_settings", { settings: { email_from: emailFrom } });
+                      setCampMsg("Sender address saved.");
+                    }}
+                    placeholder="Vision De Garçon <news@news.visiondegarcon.fr>"
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 font-mono text-sm font-normal"
+                  />
+                </label>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-gray-400">
+                  Must be an address on a domain you&apos;ve verified in Resend. Leave blank to use
+                  Resend&apos;s test sender, which can only deliver to your own Resend account email —
+                  fine for testing, but real campaigns need the verified domain.
+                </p>
+              </div>
+
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl bg-white p-5 shadow-sm">
                   <div className="text-sm font-semibold">Templates</div>
@@ -375,18 +391,19 @@ export default function MarketingPage() {
                           <span className="ml-2 text-[11px] text-gray-400">{c.subject}</span>
                         </span>
                         <span className="flex items-center gap-2">
-                          <span className="rounded bg-gray-100 px-2 py-0.5 text-[11px]">{c.status}</span>
+                          <span className="rounded bg-gray-100 px-2 py-0.5 text-[11px]">
+                            {c.status}
+                            {c.sent_at ? ` · ${new Date(c.sent_at).toLocaleDateString()}` : ""}
+                          </span>
+                          <button onClick={() => sendTest(c.id)} className="rounded border border-gray-300 px-2 py-0.5 text-[11px]">
+                            Test
+                          </button>
                           <button
-                            onClick={async () => {
-                              try {
-                                await adminCall("send_campaign", { id: c.id });
-                              } catch (e) {
-                                setCampMsg(e instanceof Error ? e.message : "Not connected");
-                              }
-                            }}
-                            className="rounded bg-[#1a1a1a] px-2 py-0.5 text-[11px] text-white"
+                            onClick={() => sendCampaign(c)}
+                            disabled={sending === c.id}
+                            className="rounded bg-[#1a1a1a] px-2 py-0.5 text-[11px] text-white disabled:opacity-50"
                           >
-                            Send
+                            {sending === c.id ? "Sending…" : c.status === "sent" ? "Resend" : "Send"}
                           </button>
                           <button onClick={async () => { await adminCall("delete_campaign", { id: c.id }); refreshCampaigns(); }} className="text-xs text-red-700 underline">Delete</button>
                         </span>

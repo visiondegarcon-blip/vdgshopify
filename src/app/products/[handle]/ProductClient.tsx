@@ -5,6 +5,7 @@ import { useCart } from "@/lib/cart";
 import { fmtPrice, type Product } from "@/lib/supabase";
 import { track } from "@/lib/track";
 import { DEFAULT_ACCORDIONS } from "@/lib/defaultAccordions";
+import ZoomImage from "@/components/ZoomImage";
 
 
 export default function ProductClient({
@@ -57,12 +58,7 @@ export default function ProductClient({
     <div className="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-4 pb-28 pt-2 md:grid-cols-2">
       {/* Featured image, swapped by the thumbnail grid on the right */}
       <div className="md:sticky md:top-4 md:self-start">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={images[featured]?.url}
-          alt={product.title}
-          className="max-h-[80vh] w-full object-contain object-top"
-        />
+        <ZoomImage src={images[featured]?.url ?? ""} alt={product.title} />
       </div>
 
       <div>

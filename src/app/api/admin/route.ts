@@ -1004,6 +1004,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
+      case "delete_discount": {
+        const { id } = body;
+        const { data: row } = await db.from("discount_codes").select("stripe_promo_id,stripe_coupon_id").eq("id", id).single();
+        if (!row) throw new Error("Not found");
+        if (row.stripe_promo_id) {
+          const StripeLib = (await import("stripe")).default;
+          const stripe = new StripeLib(process.env.STRIPE_SECRET_KEY!);
+          await stripe.promotionCodes.update(row.stripe_promo_id, { active: false });
+        }
+        await db.from("discount_codes").delete().eq("id", id);
+        return NextResponse.json({ ok: true });
+      }
+
       case "list_themes": {
         const { data } = await db.from("themes").select("*").order("id");
         const { data: active } = await db.from("site_settings").select("value").eq("key", "active_theme_id").maybeSingle();

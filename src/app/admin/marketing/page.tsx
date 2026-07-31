@@ -108,8 +108,10 @@ export default function MarketingPage() {
   }, [tab]);
 
   const refreshCampaigns = () => {
-    adminCall<{ templates: Template[] }>("list_templates").then((r) => setTemplates(r.templates));
-    adminCall<{ campaigns: Campaign[] }>("list_campaigns").then((r) => setCampaigns(r.campaigns));
+    return Promise.all([
+      adminCall<{ templates: Template[] }>("list_templates").then((r) => setTemplates(r.templates)),
+      adminCall<{ campaigns: Campaign[] }>("list_campaigns").then((r) => setCampaigns(r.campaigns)),
+    ]);
   };
 
   const savePopup = async (patch: Partial<PopupCfg> = {}) => {
@@ -317,7 +319,7 @@ export default function MarketingPage() {
           {editing ? (
             <TemplateEditor
               template={editing}
-              onClose={() => { setEditing(null); refreshCampaigns(); }}
+              onClose={async () => { await refreshCampaigns(); setEditing(null); }}
             />
           ) : (
             <>

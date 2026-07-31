@@ -230,6 +230,16 @@ export default function DiscountsPage() {
                   >
                     {d.active ? "Deactivate" : "Reactivate"}
                   </button>
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`Delete discount code ${d.code}? This can't be undone.`)) return;
+                      await adminCall("delete_discount", { id: d.id });
+                      refresh();
+                    }}
+                    className="ml-3 text-xs text-red-600 underline"
+                  >
+                    Delete
+                  </button>
                 </td>
               </tr>
             ))}

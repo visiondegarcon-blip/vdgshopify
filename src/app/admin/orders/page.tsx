@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { adminCall, fmt } from "../adminApi";
 
 type Order = {
@@ -57,9 +57,8 @@ export default function OrdersPage() {
               <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500">No orders yet.</td></tr>
             )}
             {orders.map((o) => (
-              <>
+              <Fragment key={o.id}>
                 <tr
-                  key={o.id}
                   onClick={() => setOpen(open === o.id ? null : o.id)}
                   className="cursor-pointer border-b border-gray-100 hover:bg-gray-50"
                 >
@@ -84,7 +83,7 @@ export default function OrdersPage() {
                   </td>
                 </tr>
                 {open === o.id && (
-                  <tr key={`${o.id}-d`} className="border-b border-gray-100 bg-gray-50/60">
+                  <tr className="border-b border-gray-100 bg-gray-50/60">
                     <td colSpan={6} className="px-6 py-4">
                       <div className="grid gap-6 md:grid-cols-3">
                         <div>
@@ -119,7 +118,7 @@ export default function OrdersPage() {
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>

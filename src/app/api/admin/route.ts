@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { blocksToHtml, blocksToText, type Block, type EmailFont } from "@/lib/emailHtml";
 import { DEFAULT_FROM, sendCampaignEmails, sendOne, siteUrl } from "@/lib/resendSend";
+import { notifyRestock, runDailyAutomations } from "@/lib/retention";
 
 /* Single admin endpoint. Every call must carry the caller's Supabase access
    token; we verify it server-side and check the email against the allowlist
@@ -441,9 +442,45 @@ export async function POST(req: NextRequest) {
         const { id, fields } = body; // {title?, price_cents?, compare_at_cents?, stock?, weight_g?}
         const allowed = ["title", "price_cents", "compare_at_cents", "stock", "weight_g", "position"];
         const patch = Object.fromEntries(Object.entries(fields).filter(([k]) => allowed.includes(k)));
+        // remember whether it was sold out, so raising stock can fire the
+        // waiting-list emails without a scheduled job
+        const wasOutOfStock =
+          patch.stock !== undefined &&
+          (await db.from("variants").select("stock").eq("id", id).maybeSingle()).data?.stock === 0;
         const { error } = await db.from("variants").update(patch).eq("id", id);
         if (error) throw error;
-        return NextResponse.json({ ok: true });
+
+        let restocked: { sent: number; errors: string[] } | undefined;
+        if (wasOutOfStock && Number(patch.stock) > 0) {
+          // never let a mail failure undo a stock edit the user just made
+          restocked = await notifyRestock(db, [Number(id)]).catch(() => undefined);
+        }
+        return NextResponse.json({ ok: true, restocked });
+      }
+
+      /* Manual trigger for the same work the daily cron does — the Hobby plan
+         only allows one scheduled run a day, so this is the escape hatch. */
+      case "run_automations": {
+        const result = await runDailyAutomations(db);
+        return NextResponse.json(result);
+      }
+
+      case "list_restock_requests": {
+        const { data } = await db
+          .from("restock_requests")
+          .select("id,email,created_at,notified_at,variants(title,products(title))")
+          .order("created_at", { ascending: false })
+          .limit(200);
+        return NextResponse.json({ requests: data ?? [] });
+      }
+
+      case "list_abandoned_carts": {
+        const { data } = await db
+          .from("abandoned_carts")
+          .select("*")
+          .order("started_at", { ascending: false })
+          .limit(100);
+        return NextResponse.json({ carts: data ?? [] });
       }
 
       case "create_variant": {
@@ -596,6 +633,16 @@ export async function POST(req: NextRequest) {
           "lock_config",
           "popup_config",
           "email_from",
+          // these were being sent by the shipping and store editors but were
+          // missing here, so every save was silently discarded
+          "content_success",
+          "shipping_default_weight_g",
+          "shipping_overflow_enabled",
+          "shipping_overflow_per_500g_cents",
+          // automated email settings
+          "low_stock_email",
+          "low_stock_threshold",
+          "abandoned_cart_enabled",
         ];
         for (const [key, value] of Object.entries(settings ?? {})) {
           if (!allowed.includes(key)) continue;

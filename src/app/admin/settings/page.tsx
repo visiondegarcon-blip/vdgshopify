@@ -14,6 +14,24 @@ const FIELDS: { key: string; label: string; help: string; type: "text" | "cents"
     help: "The black strip shown at the top of every store page. Leave empty to show a plain black bar.",
     type: "text",
   },
+  {
+    key: "low_stock_email",
+    label: "Stock alert email",
+    help: "Where the daily low-stock digest is sent. Leave empty to turn stock alerts off.",
+    type: "text",
+  },
+  {
+    key: "low_stock_threshold",
+    label: "Low stock threshold",
+    help: "Alert once a size drops to this many units or fewer. Default 3. Each item is only reported once until it's restocked above the threshold.",
+    type: "text",
+  },
+  {
+    key: "abandoned_cart_enabled",
+    label: "Abandoned cart emails",
+    help: "Type off to stop the daily recovery email. Anything else (or empty) leaves it on. Only carts where the shopper reached the email step at checkout can be recovered.",
+    type: "text",
+  },
 ];
 
 export default function SettingsPage() {

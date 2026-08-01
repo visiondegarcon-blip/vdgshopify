@@ -367,6 +367,8 @@ export default function MarketingPage() {
                 </p>
               </div>
 
+              <Automations />
+
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl bg-white p-5 shadow-sm">
                   <div className="text-sm font-semibold">Templates</div>
@@ -527,6 +529,60 @@ function TemplateEditor({ template, onClose }: { template: Template; onClose: ()
         <div className="text-center text-[11px] text-gray-500">Email preview</div>
         <div className="mt-3" dangerouslySetInnerHTML={{ __html: blocksToHtml(blocks, font) }} />
       </div>
+    </div>
+  );
+}
+
+/* Abandoned-cart + low-stock sweeps. Vercel's Hobby plan only allows one
+   scheduled run per day, so the button matters: it's how you send today's
+   nudges without waiting for tonight's cron. */
+function Automations() {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  type Sweep = { sent: number; skipped: number; errors: string[] };
+  const run = async () => {
+    setBusy(true);
+    setMsg(null);
+    setErr(null);
+    try {
+      const r = await adminCall<{ abandoned: Sweep; lowStock: Sweep }>("run_automations");
+      const parts = [
+        `${r.abandoned.sent} cart ${r.abandoned.sent === 1 ? "email" : "emails"}`,
+        r.lowStock.sent ? "a stock digest" : "no stock digest needed",
+      ];
+      setMsg(`Sent ${parts.join(" and ")}.`);
+      const problems = [...r.abandoned.errors, ...r.lowStock.errors];
+      if (problems.length) setErr(problems.join(" · "));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Run failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 rounded-xl bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-[13px] font-semibold">Automated emails</div>
+          <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+            Runs nightly: recovery emails for carts abandoned 4–48 hours ago, plus a low-stock
+            digest. Back-in-stock alerts don&apos;t wait for this — they go out the moment you
+            raise a sold-out size. Thresholds live in Settings.
+          </p>
+        </div>
+        <button
+          onClick={run}
+          disabled={busy}
+          className="shrink-0 rounded-lg bg-[#1a1a1a] px-4 py-2 text-sm text-white disabled:opacity-60"
+        >
+          {busy ? "Running…" : "Run now"}
+        </button>
+      </div>
+      {msg && <p className="mt-2 rounded-lg bg-green-50 px-3 py-2 text-xs text-green-800">{msg}</p>}
+      {err && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800">{err}</p>}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { fmtPrice, type Product } from "@/lib/supabase";
 import { track } from "@/lib/track";
 import { DEFAULT_ACCORDIONS } from "@/lib/defaultAccordions";
 import ZoomImage from "@/components/ZoomImage";
+import RestockNotify from "@/components/RestockNotify";
 
 
 export default function ProductClient({
@@ -123,8 +124,10 @@ export default function ProductClient({
             }}
             className="mt-4 block border border-black px-3 py-2 font-mono text-sm"
           >
+            {/* Sold-out sizes stay selectable so the shopper can ask to be
+                told when they return; Add To Cart is what stays disabled. */}
             {product.variants.map((v) => (
-              <option key={v.id} value={v.id} disabled={v.stock <= 0}>
+              <option key={v.id} value={v.id}>
                 {v.title}
                 {v.stock <= 0 ? " — Sold Out" : ""}
               </option>
@@ -147,6 +150,10 @@ export default function ProductClient({
             Keep Shopping
           </Link>
         </div>
+
+        {variant && variant.stock <= 0 && (
+          <RestockNotify variantId={variant.id} variantTitle={variant.title} />
+        )}
 
         {added && (
           <div className="mt-4 flex items-center justify-between border border-black px-4 py-3">

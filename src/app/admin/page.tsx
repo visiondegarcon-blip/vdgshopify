@@ -159,12 +159,12 @@ export default function AdminHome() {
           empty space up there is something rather than nothing. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute -right-40 -top-32 z-0 hidden select-none opacity-70 lg:block"
+        className="pointer-events-none absolute -right-64 -top-40 z-0 hidden select-none opacity-40 xl:block"
       >
         <Globe3D
           ghost
           markersRef={noMarkers}
-          style={{ width: 760, height: 760, pointerEvents: "auto" }}
+          style={{ width: 820, height: 820, pointerEvents: "auto" }}
         />
       </div>
 

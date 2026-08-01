@@ -21,6 +21,8 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [open, setOpen] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<number | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
   const load = () =>
     adminCall<{ orders: Order[] }>("list_orders")
@@ -28,15 +30,31 @@ export default function OrdersPage() {
       .finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
+  // Surface failures instead of swallowing them — a rejected adminCall (e.g. a
+  // 403 because the session hasn't cleared the 2FA challenge) used to leave the
+  // button looking simply dead, with nothing in the UI to explain why.
   const toggleFulfil = async (o: Order) => {
     const next = o.fulfillment_status === "fulfilled" ? "unfulfilled" : "fulfilled";
-    await adminCall("set_fulfillment", { orderId: o.id, fulfillment_status: next });
-    load();
+    setErr(null);
+    setBusy(o.id);
+    try {
+      await adminCall("set_fulfillment", { orderId: o.id, fulfillment_status: next });
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not update this order.");
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
     <div>
       <h1 className="text-xl font-semibold text-[#1a1a1a]">Orders</h1>
+      {err && (
+        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-800">
+          {err}
+        </div>
+      )}
       <div className="mt-4 overflow-hidden rounded-xl bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-gray-200 text-xs text-gray-600">
@@ -109,9 +127,12 @@ export default function OrdersPage() {
                         <div className="flex items-start justify-end">
                           <button
                             onClick={(e) => { e.stopPropagation(); toggleFulfil(o); }}
-                            className="rounded-lg bg-[#1a1a1a] px-4 py-2 text-sm text-white"
+                            disabled={busy === o.id}
+                            className="rounded-lg bg-[#1a1a1a] px-4 py-2 text-sm text-white disabled:opacity-60"
                           >
-                            {o.fulfillment_status === "fulfilled" ? "Mark unfulfilled" : "Mark fulfilled"}
+                            {busy === o.id
+                              ? "Saving…"
+                              : o.fulfillment_status === "fulfilled" ? "Mark unfulfilled" : "Mark fulfilled"}
                           </button>
                         </div>
                       </div>

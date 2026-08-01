@@ -12,14 +12,16 @@ import { runDailyAutomations } from "@/lib/retention";
 export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
-  /* Vercel signs its own cron calls with CRON_SECRET. Requiring it means a
-     stranger hitting this URL can't burn the daily email quota. */
+  /* Vercel sends `Authorization: Bearer $CRON_SECRET` on its own cron calls.
+     This fails CLOSED on purpose: with no secret configured the endpoint
+     refuses to run rather than letting any stranger trigger a send and burn
+     the daily email quota. */
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!secret) {
+    return NextResponse.json({ error: "CRON_SECRET is not configured." }, { status: 503 });
+  }
+  if (req.headers.get("authorization") !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

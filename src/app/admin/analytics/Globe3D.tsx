@@ -87,7 +87,10 @@ export default function Globe3D({
   const focusRef = useRef<[number, number] | null>(null);
   const focusSeq = useRef(0);
   useEffect(() => {
-    if (focus) { focusRef.current = focus; focusSeq.current++; }
+    // null is a meaningful value here — it's "reset view", which resumes the
+    // idle spin a search had pinned
+    focusRef.current = focus ?? null;
+    focusSeq.current++;
   }, [focus]);
 
   useEffect(() => {
@@ -270,6 +273,7 @@ export default function Globe3D({
     const rot = { phi: 0.8, theta: 0.25 }; // start roughly over Australia (phi = (-180 - lng)deg)
     let phiVel = 0; // rad/frame momentum
     let dragging = false;
+    let spinPaused = false; // set by a search fly-to, cleared on the next grab
     let lastInteraction = -1e9;
     const IDLE_SPIN = 0.0016; // rad/frame
     const FRICTION = 0.95;
@@ -286,6 +290,7 @@ export default function Globe3D({
 
     const down = (e: PointerEvent) => {
       dragging = true;
+      spinPaused = false;
       setGrabbing(true);
       canvas.setPointerCapture(e.pointerId);
       // capture current rotation as base — no snap when grabbing mid-spin
@@ -363,16 +368,25 @@ export default function Globe3D({
 
       // a new search result queues a fly-to; it counts as an interaction so
       // idle spin doesn't immediately drag the target back off-centre
-      if (focusSeq.current !== seenFocus && focusRef.current) {
+      if (focusSeq.current !== seenFocus) {
         seenFocus = focusSeq.current;
+        if (!focusRef.current) {
+          spinPaused = false; // reset view
+          flyTo = null;
+        } else {
         const [lat, lng] = focusRef.current;
-        // bring (lat,lng) to the front: undo the +90 offset in latLngToVec3
-        let want = (-90 - lng) * (Math.PI / 180);
+        // a point's azimuth works out to (lng + 180), so this rotation puts it
+        // dead centre — same relation as the initial Australia framing below
+        let want = (-180 - lng) * (Math.PI / 180);
         // take the shortest way round rather than unwinding several turns
         want += Math.round((rot.phi - want) / (Math.PI * 2)) * Math.PI * 2;
-        flyTo = { phi: want, theta: Math.max(-MAX_THETA, Math.min(MAX_THETA, (lat * Math.PI) / 180 * 0.6)) };
+        flyTo = { phi: want, theta: Math.max(-MAX_THETA, Math.min(MAX_THETA, (lat * Math.PI) / 180)) };
         phiVel = 0;
+        // hold still on the searched location — drifting it back off-screen a
+        // couple of seconds later defeats the point of searching for it
+        spinPaused = true;
         lastInteraction = performance.now();
+        }
       }
       if (flyTo) {
         rot.phi += (flyTo.phi - rot.phi) * 0.08;
@@ -386,7 +400,7 @@ export default function Globe3D({
         rot.phi += phiVel;
         phiVel *= FRICTION;
         // idle spin eases back in after 2s without interaction
-        if (performance.now() - lastInteraction > 2000) {
+        if (!spinPaused && performance.now() - lastInteraction > 2000) {
           phiVel += (IDLE_SPIN - phiVel) * 0.015;
         }
       }

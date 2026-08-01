@@ -91,6 +91,70 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
+      /* Mark an order shipped, optionally record a tracking number, and tell
+         the customer. The status change is committed before the email is
+         attempted so a mail failure can never leave the order stuck as
+         unshipped — the response reports the email outcome separately. */
+      case "mark_shipped": {
+        const { orderId, trackingNumber, notify } = body;
+        const tracking = typeof trackingNumber === "string" ? trackingNumber.trim() : "";
+
+        const { data: order } = await db
+          .from("orders")
+          .select("id,email,shipping_name,fulfillment_status,order_items(product_title,variant_title,quantity)")
+          .eq("id", orderId)
+          .single();
+        if (!order) throw new Error("Order not found");
+
+        const { guessTrackingUrl } = await import("@/lib/shippedEmail");
+        const trackingUrl = tracking ? guessTrackingUrl(tracking) : null;
+
+        await db
+          .from("orders")
+          .update({
+            fulfillment_status: "fulfilled",
+            tracking_number: tracking || null,
+            tracking_url: trackingUrl,
+            shipped_at: new Date().toISOString(),
+          })
+          .eq("id", orderId);
+
+        if (notify === false) return NextResponse.json({ ok: true, emailed: false });
+        if (!order.email || order.email === "unknown")
+          return NextResponse.json({ ok: true, emailed: false, emailNote: "No email address on this order." });
+
+        try {
+          const { shippedEmail } = await import("@/lib/shippedEmail");
+          const { data: fromRow } = await db
+            .from("site_settings")
+            .select("value")
+            .eq("key", "email_from")
+            .maybeSingle();
+          const mail = shippedEmail({
+            orderId: order.id,
+            customerName: order.shipping_name,
+            trackingNumber: tracking,
+            trackingUrl,
+            items: order.order_items ?? [],
+          });
+          await sendOne({
+            from: fromRow?.value?.trim() || DEFAULT_FROM,
+            to: order.email,
+            subject: mail.subject,
+            html: mail.html,
+            text: mail.text,
+          });
+          return NextResponse.json({ ok: true, emailed: true });
+        } catch (e) {
+          // Shipped state is already saved — surface the mail problem only.
+          return NextResponse.json({
+            ok: true,
+            emailed: false,
+            emailNote: e instanceof Error ? e.message : "Could not send the email.",
+          });
+        }
+      }
+
       case "refund_order": {
         const { orderId, amountCents, restock } = body;
         const { data: order } = await db

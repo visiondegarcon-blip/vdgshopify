@@ -10,6 +10,7 @@ type Order = {
   status: string;
   fulfillment_status: string;
   refunded_cents?: number;
+  tracking_number?: string | null;
   source?: string;
   stripe_session_id?: string;
   shipping_name: string | null;
@@ -24,6 +25,9 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [shipFor, setShipFor] = useState<Order | null>(null);
+  const [tracking, setTracking] = useState("");
 
   const load = () =>
     adminCall<{ orders: Order[] }>("list_orders")
@@ -34,15 +38,44 @@ export default function OrdersPage() {
   // Surface failures instead of swallowing them — a rejected adminCall (e.g. a
   // 403 because the session hasn't cleared the 2FA challenge) used to leave the
   // button looking simply dead, with nothing in the UI to explain why.
-  const toggleFulfil = async (o: Order) => {
-    const next = o.fulfillment_status === "fulfilled" ? "unfulfilled" : "fulfilled";
+  // Un-shipping is a plain status flip; shipping goes through the dialog below
+  // so a tracking number can be attached before the customer is emailed.
+  const unship = async (o: Order) => {
     setErr(null);
+    setNote(null);
     setBusy(o.id);
     try {
-      await adminCall("set_fulfillment", { orderId: o.id, fulfillment_status: next });
+      await adminCall("set_fulfillment", { orderId: o.id, fulfillment_status: "unfulfilled" });
       await load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not update this order.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const confirmShip = async (notify: boolean) => {
+    const o = shipFor;
+    if (!o) return;
+    setErr(null);
+    setNote(null);
+    setBusy(o.id);
+    try {
+      const r = await adminCall<{ emailed: boolean; emailNote?: string }>("mark_shipped", {
+        orderId: o.id,
+        trackingNumber: tracking,
+        notify,
+      });
+      setShipFor(null);
+      setTracking("");
+      await load();
+      setNote(
+        r.emailed
+          ? `Order #${o.id} marked shipped — ${o.email} has been emailed.`
+          : `Order #${o.id} marked shipped. ${r.emailNote ?? "No email sent."}`
+      );
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not mark this order shipped.");
     } finally {
       setBusy(null);
     }
@@ -82,6 +115,59 @@ export default function OrdersPage() {
       {err && (
         <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-800">
           {err}
+        </div>
+      )}
+      {note && (
+        <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-4 py-2.5 text-sm text-green-800">
+          {note}
+        </div>
+      )}
+
+      {shipFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="text-lg font-semibold text-[#1a1a1a]">Ship order #{shipFor.id}</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              {shipFor.email === "unknown" ? "No email on file for this order." : `We'll email ${shipFor.email}.`}
+            </p>
+            <label className="mt-4 block text-[11px] text-gray-500">
+              Tracking number (optional)
+              <input
+                autoFocus
+                value={tracking}
+                onChange={(e) => setTracking(e.target.value)}
+                placeholder="e.g. 33ABC123456789"
+                className="mt-0.5 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
+              />
+            </label>
+            <p className="mt-2 text-[11px] text-gray-500">
+              {tracking.trim()
+                ? "The email will show this tracking number, linked to Australia Post where we can match the format."
+                : "Leave blank and the email will just promise delivery in 3–5 business days."}
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => { setShipFor(null); setTracking(""); }}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => confirmShip(false)}
+                disabled={busy === shipFor.id}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm disabled:opacity-60"
+              >
+                Ship without emailing
+              </button>
+              <button
+                onClick={() => confirmShip(true)}
+                disabled={busy === shipFor.id || shipFor.email === "unknown"}
+                className="rounded-lg bg-[#1a1a1a] px-4 py-2 text-sm text-white disabled:opacity-60"
+              >
+                {busy === shipFor.id ? "Sending…" : "Ship & notify"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
       <div className="mt-4 overflow-hidden rounded-xl bg-white shadow-sm">
@@ -125,7 +211,7 @@ export default function OrdersPage() {
                   </td>
                   <td className="px-4 py-2.5">
                     <span className={`rounded-full px-2 py-0.5 text-xs ${o.fulfillment_status === "fulfilled" ? "bg-[#cdfee1]" : "bg-[#ffd6a4]"}`}>
-                      {o.fulfillment_status}
+                      {o.fulfillment_status === "fulfilled" ? "shipped" : "not shipped"}
                     </span>
                   </td>
                 </tr>
@@ -155,14 +241,22 @@ export default function OrdersPage() {
                         </div>
                         <div className="flex flex-col items-end gap-2">
                           <button
-                            onClick={(e) => { e.stopPropagation(); toggleFulfil(o); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (o.fulfillment_status === "fulfilled") return unship(o);
+                              setTracking(o.tracking_number ?? "");
+                              setShipFor(o);
+                            }}
                             disabled={busy === o.id}
                             className="rounded-lg bg-[#1a1a1a] px-4 py-2 text-sm text-white disabled:opacity-60"
                           >
                             {busy === o.id
                               ? "Saving…"
-                              : o.fulfillment_status === "fulfilled" ? "Mark unfulfilled" : "Mark fulfilled"}
+                              : o.fulfillment_status === "fulfilled" ? "Mark unshipped" : "Mark shipped"}
                           </button>
+                          {o.tracking_number && (
+                            <span className="font-mono text-[11px] text-gray-500">{o.tracking_number}</span>
+                          )}
                           {(o.refunded_cents ?? 0) > 0 && (
                             <span className="text-[11px] text-gray-500">
                               {fmt(o.refunded_cents ?? 0, o.currency)} refunded

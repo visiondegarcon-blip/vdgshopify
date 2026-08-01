@@ -45,6 +45,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (!user) return setAuthorized(null);
+    // "me" is exempt from the aal2 check server-side (see route.ts), so this
+    // only reflects allowlist membership — safe to resolve before the 2FA
+    // prompt below has had a chance to run.
     adminCall<{ email: string }>("me")
       .then(() => setAuthorized(true))
       .catch(() => setAuthorized(false));

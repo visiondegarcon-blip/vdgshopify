@@ -27,7 +27,13 @@ function decodeAal(token: string): string | null {
   }
 }
 
-async function authorize(req: NextRequest) {
+// `requireAal2: false` is used only by the "me" action — the frontend calls
+// it just to learn whether this email is on the allowlist at all, before it
+// knows whether to show the 2FA prompt. Enforcing aal2 there too created a
+// deadlock: a password-only (aal1) login would fail "me" identically to a
+// non-admin account, so the UI showed "not an admin account" and the user
+// was never given the chance to enter their 6-digit code.
+async function authorize(req: NextRequest, requireAal2 = true) {
   const token = req.headers.get("authorization")?.replace(/^Bearer /, "");
   if (!token) return null;
   const { data, error } = await admin().auth.getUser(token);
@@ -35,21 +41,21 @@ async function authorize(req: NextRequest) {
   if (!ADMIN_EMAILS.includes(data.user.email.toLowerCase())) return null;
 
   // If this account has TOTP enrolled, a password-only (aal1) token is not
-  // enough — require the token to have cleared the aal2 challenge.
+  // enough for real actions — require the token to have cleared the aal2 challenge.
   const hasVerifiedTotp = (data.user.factors ?? []).some(
     (f) => f.factor_type === "totp" && f.status === "verified"
   );
-  if (hasVerifiedTotp && decodeAal(token) !== "aal2") return null;
+  if (requireAal2 && hasVerifiedTotp && decodeAal(token) !== "aal2") return null;
 
   return data.user;
 }
 
 export async function POST(req: NextRequest) {
-  const user = await authorize(req);
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  const db = admin();
   const body = await req.json().catch(() => ({}));
   const { action } = body;
+  const user = await authorize(req, action !== "me");
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  const db = admin();
 
   try {
     switch (action) {

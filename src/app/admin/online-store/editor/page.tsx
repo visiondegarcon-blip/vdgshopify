@@ -45,9 +45,14 @@ const FONT_CHOICES = [
 ] as const;
 
 const SECTIONS_LIST = [
-  "Banner", "Home screen", "Products", "Store page", "Buttons", "Fonts", "Product page", "About page",
+  "Banner", "Home screen", "Products", "Store page", "Buttons", "Fonts", "Product page", "About page", "Success page",
 ] as const;
 type Section = (typeof SECTIONS_LIST)[number];
+type SuccessCfg = { heading: string; body: string };
+const SUCCESS_DEFAULTS: SuccessCfg = {
+  heading: "Merci! Order Confirmed ✓",
+  body: "Thank you for supporting the vision. A receipt has been emailed to you.",
+};
 
 const input = "mt-0.5 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm";
 const label = "mt-2 block text-[11px] text-gray-500";
@@ -65,6 +70,7 @@ export default function StoreEditor() {
   const [fonts, setFonts] = useState<Fonts>({ head: "", body: "" });
   const [store, setStore] = useState<StoreCfg>({ columns: 4, badge_bg: "", badge_fg: "", back_label: "Back Home", sold_out_label: "Sold Out" });
   const [about, setAbout] = useState<AboutSections>(() => JSON.parse(JSON.stringify(ABOUT_DEFAULTS)));
+  const [success, setSuccess] = useState<SuccessCfg>(SUCCESS_DEFAULTS);
   const [aboutTab, setAboutTab] = useState<string>(ABOUT_TABS[0]);
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [openProduct, setOpenProduct] = useState<number | null>(null);
@@ -102,6 +108,7 @@ export default function StoreEditor() {
       setStore(json("content_store", store));
       const ab = json<{ sections?: AboutSections }>("content_about", {});
       if (ab.sections) setAbout((prev) => ({ ...prev, ...ab.sections }));
+      setSuccess(json("content_success", SUCCESS_DEFAULTS));
       try {
         const prod = JSON.parse(r.settings.content_product ?? "{}");
         setAccordions(prod.accordions?.length ? prod.accordions : DEFAULT_ACCORDIONS);
@@ -127,6 +134,7 @@ export default function StoreEditor() {
           content_fonts: JSON.stringify(fonts),
           content_store: JSON.stringify(store),
           content_about: JSON.stringify({ sections: about }),
+          content_success: JSON.stringify(success),
         },
       });
       sessionStorage.removeItem("vdg-banner");
@@ -583,6 +591,30 @@ export default function StoreEditor() {
             >
               + Add block
             </button>
+          </div>
+        )}
+
+        {section === "Success page" && (
+          <div className="mt-5">
+            <h2 className="text-[13px] font-semibold uppercase tracking-wide text-gray-500">Order confirmation page</h2>
+            <p className="mt-1 text-[11px] text-gray-500">Shown after checkout at /success.</p>
+            <label className={label}>
+              Heading
+              <input
+                value={success.heading}
+                onChange={(e) => setSuccess({ ...success, heading: e.target.value })}
+                className={input}
+              />
+            </label>
+            <label className={label}>
+              Body
+              <textarea
+                value={success.body}
+                rows={4}
+                onChange={(e) => setSuccess({ ...success, body: e.target.value })}
+                className={input}
+              />
+            </label>
           </div>
         )}
 

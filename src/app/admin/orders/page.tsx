@@ -11,6 +11,7 @@ type Order = {
   fulfillment_status: string;
   refunded_cents?: number;
   tracking_number?: string | null;
+  notes?: string | null;
   source?: string;
   stripe_session_id?: string;
   shipping_name: string | null;
@@ -238,6 +239,24 @@ export default function OrdersPage() {
                             {o.shipping_address?.country}
                             <div className="mt-1 text-gray-500">{o.email === "unknown" ? "—" : o.email}</div>
                           </div>
+                          <div className="mt-4 text-xs font-semibold uppercase text-gray-500">Note</div>
+                          <textarea
+                            defaultValue={o.notes ?? ""}
+                            rows={3}
+                            placeholder="Internal note — the customer never sees this."
+                            onClick={(e) => e.stopPropagation()}
+                            onBlur={async (e) => {
+                              if (e.target.value === (o.notes ?? "")) return;
+                              try {
+                                await adminCall("set_order_notes", { orderId: o.id, notes: e.target.value });
+                                setNote(`Note saved on order #${o.id}.`);
+                                await load();
+                              } catch (err) {
+                                setErr(err instanceof Error ? err.message : "Could not save the note.");
+                              }
+                            }}
+                            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-xs"
+                          />
                         </div>
                         <div className="flex flex-col items-end gap-2">
                           <button

@@ -68,6 +68,7 @@ export default function Globe3D({
   markersRef,
   zoom = 1,
   focus,
+  ghost = false,
   className,
   style,
 }: {
@@ -76,6 +77,9 @@ export default function Globe3D({
   zoom?: number;
   /** [lat, lng] to spin to the front, e.g. from the location search. */
   focus?: [number, number] | null;
+  /** Background treatment: bare grey land dots, no sphere, glow or pins.
+   *  Used behind the admin home page the way Shopify does it. */
+  ghost?: boolean;
   className?: string;
   style?: React.CSSProperties;
 }) {
@@ -141,7 +145,9 @@ export default function Globe3D({
         }`,
     });
     const sphere = new THREE.Mesh(new THREE.SphereGeometry(R, 96, 96), sphereMat);
-    globe.add(sphere);
+    // ghost mode is just the dot shell — the dots' own limb fade already hides
+    // the far side, so no sphere is needed to occlude them
+    if (!ghost) globe.add(sphere);
 
     /* --- soft green rim glow (backside halo shell, screen-space normals) --- */
     const glowMat = new THREE.ShaderMaterial({
@@ -165,12 +171,12 @@ export default function Globe3D({
         }`,
     });
     const glow = new THREE.Mesh(new THREE.SphereGeometry(R * 1.16, 64, 64), glowMat);
-    scene.add(glow); // outside globe group so it never rotates/wobbles
+    if (!ghost) scene.add(glow); // outside globe group so it never rotates/wobbles
 
     /* --- land dots (built async once the mask decodes) --- */
     const dotMat = new THREE.ShaderMaterial({
       transparent: true,
-      uniforms: { uScale: { value: 1 } },
+      uniforms: { uScale: { value: 1 }, uGhost: { value: ghost ? 1 : 0 } },
       vertexShader: `
         uniform float uScale;
         varying float vTint; varying float vFade; varying float vPolar;
@@ -187,6 +193,7 @@ export default function Globe3D({
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: `
+        uniform float uGhost;
         varying float vTint; varying float vFade; varying float vPolar;
         void main() {
           vec2 d = gl_PointCoord - vec2(0.5);
@@ -196,8 +203,10 @@ export default function Globe3D({
           vec3 blue = vec3(0.470, 0.680, 0.885);
           vec3 teal = vec3(0.345, 0.815, 0.660);
           vec3 polar = vec3(0.545, 0.600, 0.855);
-          vec3 c = mix(blue, teal, vTint);
-          gl_FragColor = vec4(mix(c, polar, vPolar), a * 0.95);
+          vec3 c = mix(mix(blue, teal, vTint), polar, vPolar);
+          // background treatment: flat grey, and faint enough to sit under text
+          c = mix(c, vec3(0.62, 0.64, 0.67), uGhost);
+          gl_FragColor = vec4(c, a * mix(0.95, 0.5, uGhost));
         }`,
     });
     let dotPoints: THREE.Points | null = null;
@@ -236,6 +245,7 @@ export default function Globe3D({
     const sprites: THREE.Sprite[] = [];
     let markersKey = "";
     const syncMarkers = () => {
+      if (ghost) return; // decoration only — no live data on the home page
       // __globeTestMarkers: dev/test override for visually verifying pins
       const override =
         typeof window !== "undefined"
@@ -443,7 +453,7 @@ export default function Globe3D({
       canvas.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ghost]);
 
   return (
     <div

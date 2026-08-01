@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { adminCall, fmt } from "./adminApi";
+import Globe3D from "./analytics/Globe3D";
 import { COUNTRY_NAMES, countryName } from "@/lib/countries";
 
 /* Shopify-style home: a strip of headline metrics that expand into a chart,
@@ -102,6 +103,8 @@ export default function AdminHome() {
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
+  // the decorative globe takes no data; it just needs the prop's shape
+  const noMarkers = useRef<never[]>([]);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning!" : hour < 18 ? "Good afternoon!" : "Good evening!";
@@ -150,9 +153,23 @@ export default function AdminHome() {
   };
 
   return (
-    <div>
+    <div className="relative">
+      {/* Decorative spinning globe, bleeding off the top-right corner like
+          Shopify's. It sits behind everything and stays draggable, so the
+          empty space up there is something rather than nothing. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-40 -top-32 z-0 hidden select-none opacity-70 lg:block"
+      >
+        <Globe3D
+          ghost
+          markersRef={noMarkers}
+          style={{ width: 760, height: 760, pointerEvents: "auto" }}
+        />
+      </div>
+
       {/* metric strip */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="relative z-10 flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           <select
             value={days}
@@ -213,7 +230,7 @@ export default function AdminHome() {
       </div>
 
       {open && data && (
-        <div className="mt-4 rounded-xl bg-white p-5 shadow-sm">
+        <div className="relative z-10 mt-4 rounded-xl bg-white p-5 shadow-sm">
           <div className="flex items-baseline justify-between">
             <div>
               <div className="text-[13px] font-semibold">
@@ -243,7 +260,7 @@ export default function AdminHome() {
       )}
 
       {/* greeting + country search */}
-      <div className="mt-14 text-center">
+      <div className="relative z-10 mt-14 text-center">
         <h1 className="text-2xl font-semibold text-[#1a1a1a]">{greeting}</h1>
         <p className="mt-1 text-xl text-[#1a1a1a]">Let&apos;s continue growing the vision.</p>
 
@@ -294,7 +311,7 @@ export default function AdminHome() {
 
       {/* country breakdown — only meaningful once a country is selected */}
       {country && data && (
-        <div className="mt-12 grid gap-4 md:grid-cols-3">
+        <div className="relative z-10 mt-12 grid gap-4 md:grid-cols-3">
           {(
             [
               ["Top pages", data.topPages, (n: number) => `${n}`],

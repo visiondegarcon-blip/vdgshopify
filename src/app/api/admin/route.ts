@@ -203,6 +203,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ orders: data ?? [] });
       }
 
+      case "set_order_notes": {
+        const { orderId, notes } = body;
+        const { error } = await db
+          .from("orders")
+          .update({ notes: String(notes ?? "").slice(0, 4000) })
+          .eq("id", orderId);
+        if (error) throw error;
+        return NextResponse.json({ ok: true });
+      }
+
       case "set_fulfillment": {
         const { orderId, fulfillment_status } = body;
         await db.from("orders").update({ fulfillment_status }).eq("id", orderId);

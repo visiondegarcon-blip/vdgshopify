@@ -20,7 +20,19 @@ export default function ProductClient({
   buttons?: { add_to_cart: string; sold_out: string; view_cart: string };
 }) {
   const label = { add_to_cart: "Add To Cart", sold_out: "Sold Out", view_cart: "View Cart", ...buttons };
-  const accordions = accordionOverrides ?? DEFAULT_ACCORDIONS;
+  /* Info sections are brand-wide, but sizing isn't — a tee and a hoodie need
+     different measurements. A product's own size_chart replaces the shared
+     one's body; products that leave it blank keep the global chart. */
+  const baseAccordions = accordionOverrides ?? DEFAULT_ACCORDIONS;
+  const ownChart = product.size_chart?.trim();
+  const isChart = (t: string) => /size\s*chart/i.test(t);
+  const accordions = !ownChart
+    ? baseAccordions
+    : baseAccordions.some((a) => isChart(a.title))
+      ? baseAccordions.map((a) => (isChart(a.title) ? { ...a, body: ownChart } : a))
+      : // no shared chart section to slot into (it was removed globally) —
+        // still show this product's own chart rather than dropping it
+        [...baseAccordions, { title: "Size Chart", body: ownChart }];
   const { add } = useCart();
   const inStock = product.variants.filter((v) => v.stock > 0);
   const [variantId, setVariantId] = useState<number>(

@@ -92,6 +92,20 @@ export default function ProductEditPage() {
               onBlur={(e) => e.target.value !== p.description_html && saveProduct({ description_html: e.target.value })}
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
             />
+            <label className="mt-4 block text-xs font-semibold text-gray-600">Size chart</label>
+            <textarea
+              defaultValue={p.size_chart ?? ""}
+              rows={9}
+              placeholder={"Leave blank to use the shared size chart.\n\nS\n- Body Length (Back): 69CM\n- Shoulder Width: 52.5\n- Body Width: 55.5"}
+              onBlur={(e) =>
+                e.target.value !== (p.size_chart ?? "") && saveProduct({ size_chart: e.target.value })
+              }
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
+            />
+            <p className="mt-1 text-[11px] text-gray-500">
+              Only applies to this product. Blank falls back to the shared chart in Online Store →
+              Editor → Info accordions.
+            </p>
             <p className="mt-1 text-[11px] text-gray-500">Fields save when you click away.</p>
           </div>
 

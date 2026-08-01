@@ -11,6 +11,7 @@ export type AdminProduct = {
   description_html: string;
   status: string;
   sort: number;
+  size_chart: string | null;
   product_images: { id: number; url: string; position: number }[];
   variants: { id: number; title: string; price_cents: number; compare_at_cents: number | null; stock: number; weight_g?: number; position: number }[];
 };

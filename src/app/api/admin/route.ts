@@ -77,6 +77,124 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      /* Home dashboard. Returns the headline metrics plus a daily series for
+         each so a card can expand into a chart, and — when `country` is set —
+         the same shape recomputed for just that country. Orders are matched to
+         a country via their shipping address; sessions via the event geo. */
+      case "home_overview": {
+        const days = Math.min(Math.max(Number(body.days) || 30, 1), 365);
+        const country = typeof body.country === "string" ? body.country.trim().toUpperCase() : "";
+        const span = days * 864e5;
+        const start = Date.now() - span;
+        const cutoff = new Date(start).toISOString();
+        const prevCutoff = new Date(start - span).toISOString();
+
+        const { data: events } = await db
+          .from("events")
+          .select("session_id,event,path,country,city,ts,meta")
+          .gte("ts", prevCutoff)
+          .order("ts")
+          .limit(100000);
+        const { data: orders } = await db
+          .from("orders")
+          .select("created_at,status,total_cents,shipping_address, order_items(product_title,quantity)")
+          .eq("status", "paid")
+          .gte("created_at", prevCutoff);
+
+        const evAll = events ?? [];
+        const ordAll = orders ?? [];
+        const orderCountry = (o: (typeof ordAll)[number]) =>
+          ((o.shipping_address as { country?: string } | null)?.country ?? "").toUpperCase();
+
+        // every country we have any signal for, so the search can suggest them
+        const known = new Map<string, number>();
+        for (const e of evAll) {
+          if (e.ts < cutoff || e.event !== "page_view" || !e.country) continue;
+          known.set(e.country.toUpperCase(), (known.get(e.country.toUpperCase()) ?? 0) + 1);
+        }
+        for (const o of ordAll) {
+          const c = orderCountry(o);
+          if (c && !known.has(c)) known.set(c, 0);
+        }
+
+        const ev = country ? evAll.filter((e) => (e.country ?? "").toUpperCase() === country) : evAll;
+        const ord = country ? ordAll.filter((o) => orderCountry(o) === country) : ordAll;
+
+        const inWindow = <T,>(list: T[], stamp: (x: T) => string, from: string, to?: string) =>
+          list.filter((x) => stamp(x) >= from && (!to || stamp(x) < to));
+
+        const metrics = (from: string, to?: string) => {
+          const e = inWindow(ev, (x) => x.ts, from, to);
+          const o = inWindow(ord, (x) => x.created_at, from, to);
+          const sessions = new Set(e.filter((x) => x.event === "page_view").map((x) => x.session_id));
+          const converted = new Set(e.filter((x) => x.event === "purchase").map((x) => x.session_id));
+          return {
+            sessions: sessions.size,
+            salesCents: o.reduce((n, x) => n + x.total_cents, 0),
+            orders: o.length,
+            // conversion is only meaningful against tracked sessions; orders
+            // without a matching session (e.g. imported) would push it over 100%
+            conversion: sessions.size ? Math.min(100, (converted.size / sessions.size) * 100) : 0,
+          };
+        };
+        const cur = metrics(cutoff);
+        const prev = metrics(prevCutoff, cutoff);
+
+        // daily buckets for both windows, aligned so day i lines up across them
+        const dayKey = (t: number) => new Date(t).toISOString().slice(0, 10);
+        const series: { day: string; sessions: number; prevSessions: number; salesCents: number; orders: number }[] = [];
+        for (let i = 0; i < days; i++) {
+          const from = start + i * 864e5;
+          const key = dayKey(from);
+          const prevKey = dayKey(from - span);
+          const sess = new Set(
+            ev.filter((x) => x.event === "page_view" && x.ts.slice(0, 10) === key).map((x) => x.session_id)
+          );
+          const prevSess = new Set(
+            ev.filter((x) => x.event === "page_view" && x.ts.slice(0, 10) === prevKey).map((x) => x.session_id)
+          );
+          const dayOrders = ord.filter((x) => x.created_at.slice(0, 10) === key);
+          series.push({
+            day: key,
+            sessions: sess.size,
+            prevSessions: prevSess.size,
+            salesCents: dayOrders.reduce((n, x) => n + x.total_cents, 0),
+            orders: dayOrders.length,
+          });
+        }
+
+        // live = a page_view in the last 5 minutes
+        const liveFrom = new Date(Date.now() - 5 * 60e3).toISOString();
+        const liveCount = new Set(
+          ev.filter((x) => x.ts >= liveFrom && x.event === "page_view").map((x) => x.session_id)
+        ).size;
+
+        const tally = (pairs: [string, number][]) => {
+          const m = new Map<string, number>();
+          for (const [k, n] of pairs) if (k) m.set(k, (m.get(k) ?? 0) + n);
+          return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+        };
+        const curEv = inWindow(ev, (x) => x.ts, cutoff);
+        const curOrd = inWindow(ord, (x) => x.created_at, cutoff);
+
+        return NextResponse.json({
+          country,
+          days,
+          ...cur,
+          prev,
+          series,
+          liveCount,
+          countries: [...known.entries()].sort((a, b) => b[1] - a[1]).map(([code, views]) => ({ code, views })),
+          topPages: tally(curEv.filter((e) => e.event === "page_view").map((e) => [e.path ?? "", 1])),
+          topCities: tally(curEv.map((e) => [e.city ?? "", 1])),
+          topProducts: tally(
+            curOrd.flatMap((o) =>
+              (o.order_items ?? []).map((i) => [i.product_title, i.quantity] as [string, number])
+            )
+          ),
+        });
+      }
+
       case "list_orders": {
         const { data } = await db
           .from("orders")
@@ -281,8 +399,8 @@ export async function POST(req: NextRequest) {
       }
 
       case "update_product": {
-        const { id, fields } = body; // {title?, handle?, description_html?, status?, sort?}
-        const allowed = ["title", "handle", "description_html", "status", "sort"];
+        const { id, fields } = body; // {title?, handle?, description_html?, status?, sort?, size_chart?}
+        const allowed = ["title", "handle", "description_html", "status", "sort", "size_chart"];
         const patch = Object.fromEntries(Object.entries(fields).filter(([k]) => allowed.includes(k)));
         const { error } = await db.from("products").update(patch).eq("id", id);
         if (error) throw error;
@@ -1066,13 +1184,17 @@ export async function POST(req: NextRequest) {
         }
         const { data: todayOrders } = await db
           .from("orders")
-          .select("total_cents,status")
+          .select("total_cents,status,shipping_address")
           .gte("created_at", dayStart.toISOString());
         let ordersToday = 0, salesToday = 0;
+        // where today's sales shipped to, for the globe's order pins
+        const orderCountries = new Map<string, number>();
         for (const o of todayOrders ?? []) {
           if (o.status !== "paid") continue;
           ordersToday++;
           salesToday += o.total_cents;
+          const c = (o.shipping_address as { country?: string } | null)?.country;
+          if (c) orderCountries.set(c.toUpperCase(), (orderCountries.get(c.toUpperCase()) ?? 0) + 1);
         }
         return NextResponse.json({
           liveVisitors: [...live.values()],
@@ -1081,6 +1203,7 @@ export async function POST(req: NextRequest) {
           viewsToday,
           ordersToday,
           salesToday,
+          orderCountries: [...orderCountries.entries()],
           behavior: { activeCarts, checkingOut, purchased: purchasedNow },
           locations: [...locSessions.entries()]
             .map(([k, s]) => [k, s.size] as [string, number])

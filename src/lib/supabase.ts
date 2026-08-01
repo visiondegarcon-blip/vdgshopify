@@ -21,6 +21,9 @@ export type Product = {
   description_html: string;
   status: string;
   sort: number;
+  /* Overrides the shared "Size Chart" accordion for this product only.
+     Empty/null keeps the global one — see resolveAccordions in ProductClient. */
+  size_chart: string | null;
   product_images: { url: string; position: number }[];
   variants: Variant[];
 };

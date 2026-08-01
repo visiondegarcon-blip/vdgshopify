@@ -8,8 +8,9 @@ import { useRef, useState } from "react";
    touch devices never fire mouse hover, so mobile is unaffected. */
 
 const ZOOM = 2.4;
-const LENS_W = 240;
-const LENS_H = 400;
+const LENS_W = 165;
+const LENS_H = 260;
+const GAP = 24; // distance from the cursor to the lens edge
 
 export default function ZoomImage({ src, alt }: { src: string; alt: string }) {
   const wrap = useRef<HTMLDivElement>(null);
@@ -49,9 +50,10 @@ export default function ZoomImage({ src, alt }: { src: string; alt: string }) {
     const bgX = Math.max(0, Math.min(bgW - LENS_W, ix * ZOOM - LENS_W / 2));
     const bgY = Math.max(0, Math.min(bgH - LENS_H, iy * ZOOM - LENS_H / 2));
 
-    // lens sits right of the cursor, flips left near the edge
-    let left = x + 28;
-    if (left + LENS_W > box.width) left = x - LENS_W - 28;
+    // lens always sits to the LEFT of the cursor — it never flips sides, so the
+    // eye doesn't have to chase it across the image. Clamped to the container
+    // so it stays fully visible when the cursor nears the left edge.
+    const left = Math.max(0, x - LENS_W - GAP);
     const top = Math.max(0, Math.min(box.height - LENS_H, y - LENS_H / 2));
 
     setLens({ left, top, bgX, bgY, bgW, bgH });

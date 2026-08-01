@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import Globe3D from "./Globe3D";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Globe3D, { type GlobeMarker } from "./Globe3D";
 import { adminCall, fmt } from "../adminApi";
+import { countryName } from "@/lib/countries";
 
 /* Shopify-style Live View: left column of stat cards (visitors, sales,
    sessions, orders, customer behavior, sessions by location) and a big
@@ -16,6 +17,7 @@ type Live = {
   salesToday: number;
   behavior: { activeCarts: number; checkingOut: number; purchased: number };
   locations: [string, number][];
+  orderCountries: [string, number][];
   topPages: [string, number][];
 };
 
@@ -46,7 +48,18 @@ function StatCard({ label, value }: { label: string; value: string }) {
 
 export default function LiveView() {
   const [live, setLive] = useState<Live | null>(null);
-  const markersRef = useRef<{ location: [number, number]; size: number }[]>([]);
+  const markersRef = useRef<GlobeMarker[]>([]);
+  const [zoom, setZoom] = useState(1);
+  const [focus, setFocus] = useState<[number, number] | null>(null);
+  const [search, setSearch] = useState("");
+  const [showList, setShowList] = useState(false);
+  const [showPins, setShowPins] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const searchBox = useRef<HTMLDivElement>(null);
+  // the poll runs on a timer and must see the current toggle, not the value
+  // captured when its effect first ran
+  const showPinsRef = useRef(true);
+  const allMarkers = useRef<GlobeMarker[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,10 +72,21 @@ export default function LiveView() {
         for (const v of r.liveVisitors) {
           if (v.country && GEO[v.country]) counts.set(v.country, (counts.get(v.country) ?? 0) + 1);
         }
-        markersRef.current = [...counts.entries()].map(([c, n]) => ({
-          location: GEO[c],
-          size: Math.min(0.06 + n * 0.03, 0.18),
-        }));
+        allMarkers.current = [
+          ...[...counts.entries()].map(([c, n]): GlobeMarker => ({
+            location: GEO[c],
+            size: Math.min(0.06 + n * 0.03, 0.18),
+            kind: "visitor",
+          })),
+          ...(r.orderCountries ?? [])
+            .filter(([c]) => GEO[c])
+            .map(([c, n]): GlobeMarker => ({
+              location: GEO[c],
+              size: Math.min(0.07 + n * 0.02, 0.16),
+              kind: "order",
+            })),
+        ];
+        markersRef.current = showPinsRef.current ? allMarkers.current : [];
       } catch {}
     };
     poll();
@@ -73,6 +97,33 @@ export default function LiveView() {
     };
   }, []);
 
+  // hide pins without tearing down the scene: the globe reads this ref each frame
+  useEffect(() => {
+    showPinsRef.current = showPins;
+    markersRef.current = showPins ? allMarkers.current : [];
+  }, [showPins]);
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (searchBox.current && !searchBox.current.contains(e.target as Node)) setShowList(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
+  const matches = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return Object.keys(GEO)
+      .filter((c) => !q || countryName(c).toLowerCase().includes(q) || c.toLowerCase().includes(q))
+      .sort((a, b) => countryName(a).localeCompare(countryName(b)))
+      .slice(0, 8);
+  }, [search]);
+
+  const goTo = (code: string) => {
+    setFocus(GEO[code]);
+    setSearch(countryName(code));
+    setShowList(false);
+  };
 
   const maxLoc = Math.max(1, ...(live?.locations.map(([, n]) => n) ?? [1]));
 
@@ -172,22 +223,102 @@ export default function LiveView() {
         </div>
       </div>
 
-      {/* right — big light globe */}
+      {/* right — big light globe with Shopify's map chrome */}
       <div className="relative min-h-[520px] overflow-hidden rounded-xl">
         <Globe3D
           markersRef={markersRef}
+          zoom={zoom}
+          focus={focus}
           style={{
-            width: "min(100%, 860px)",
+            width: expanded ? "min(100%, 1100px)" : "min(100%, 860px)",
             aspectRatio: "1",
             margin: "0 auto",
           }}
         />
-        <div className="pointer-events-none absolute bottom-3 right-4 flex items-center gap-4 rounded-full bg-white/80 px-4 py-1.5 text-[12px] text-gray-700 shadow-sm backdrop-blur">
-          <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-[#6b4ef5]" /> Visitors right now
+
+        {/* location search */}
+        <div ref={searchBox} className="absolute left-1/2 top-3 w-[300px] -translate-x-1/2">
+          <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
+            <span className="text-gray-400">⌕</span>
+            <input
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setShowList(true); }}
+              onFocus={() => setShowList(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && matches[0]) goTo(matches[0]);
+                if (e.key === "Escape") setShowList(false);
+              }}
+              placeholder="Search location"
+              className="w-full bg-transparent text-sm outline-none"
+            />
+          </div>
+          {showList && matches.length > 0 && (
+            <ul className="mt-1.5 max-h-64 overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+              {matches.map((c) => (
+                <li key={c}>
+                  <button
+                    onClick={() => goTo(c)}
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50"
+                  >
+                    {countryName(c)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* top-right tools */}
+        <div className="absolute right-3 top-3 flex gap-2">
+          <button
+            onClick={() => setShowPins((v) => !v)}
+            title={showPins ? "Hide markers" : "Show markers"}
+            className={`h-9 w-9 rounded-lg border border-gray-200 text-sm shadow-sm ${
+              showPins ? "bg-white" : "bg-gray-100 text-gray-400"
+            }`}
+          >
+            ◉
+          </button>
+          <button
+            onClick={() => { setZoom(1); setFocus(null); setSearch(""); }}
+            title="Reset view"
+            className="h-9 w-9 rounded-lg border border-gray-200 bg-white text-sm shadow-sm"
+          >
+            ⟳
+          </button>
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            title={expanded ? "Shrink" : "Expand"}
+            className="h-9 w-9 rounded-lg border border-gray-200 bg-white text-sm shadow-sm"
+          >
+            ⤢
+          </button>
+        </div>
+
+        {/* zoom */}
+        <div className="absolute bottom-3 right-3 flex flex-col gap-1.5">
+          <button
+            onClick={() => setZoom((z) => Math.min(3, +(z + 0.25).toFixed(2)))}
+            className="h-9 w-9 rounded-lg border border-gray-200 bg-white text-lg leading-none shadow-sm"
+          >
+            +
+          </button>
+          <button
+            onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.25).toFixed(2)))}
+            className="h-9 w-9 rounded-lg border border-gray-200 bg-white text-lg leading-none shadow-sm"
+          >
+            −
+          </button>
+        </div>
+
+        {/* legend */}
+        <div className="pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
+          <span className="flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-[12px] text-gray-700 shadow-sm backdrop-blur">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#7334E8]" /> Orders
           </span>
-          <span className="text-gray-300">·</span>
-          <span className="text-gray-400">Drag to rotate</span>
+          <span className="flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-[12px] text-gray-700 shadow-sm backdrop-blur">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#2EB9F5]" /> Visitors right now
+          </span>
         </div>
       </div>
     </div>

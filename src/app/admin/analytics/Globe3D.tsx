@@ -405,6 +405,11 @@ export default function Globe3D({
         }
       }
       globe.rotation.set(rot.theta, rot.phi, 0, "XYZ");
+      // __globeState: sibling of __globeTestMarkers — lets a session inspect the
+      // physics from the console instead of inferring it from screenshots
+      (window as unknown as { __globeState?: unknown }).__globeState = {
+        phi: rot.phi, theta: rot.theta, phiVel, spinPaused, flying: !!flyTo, seenFocus,
+      };
       syncMarkers();
       const beat = 1 + 0.12 * Math.sin(pulse);
       const camDir = new THREE.Vector3();

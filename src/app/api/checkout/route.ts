@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { validateDiscount, type DiscountRow } from "@/lib/discounts";
+import { quoteShipping } from "@/lib/shipping";
 
 // Server-side: validates prices/stock from the DB, never trusts the client.
 export async function POST(req: NextRequest) {
@@ -51,13 +52,27 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // shipping labels/rates are editable from the admin Settings page
-  const { data: settingsRows } = await supabase.from("site_settings").select("key,value");
-  const settings = Object.fromEntries((settingsRows ?? []).map((s) => [s.key, s.value]));
-  const intlCents = Math.max(0, parseInt(settings.shipping_intl_cents ?? "1500", 10) || 1500);
+  /* Shipping is priced by destination region + cart weight. The shopper picks
+     their country on the cart page (Stripe Checkout can't re-price shipping
+     from the address typed into it), and we re-quote here from the DB rather
+     than trusting any amount the client sends. */
+  const country = typeof body?.country === "string" ? body.country.toUpperCase() : "";
+  const requestedService = body?.shipping_service === "express" ? "express" : "standard";
+  if (!country) return NextResponse.json({ error: "Choose a delivery country first." }, { status: 400 });
+
+  const quotes = await quoteShipping(country, items);
+  if (!quotes.length)
+    return NextResponse.json({ error: "We don't ship to that country yet." }, { status: 400 });
+  const chosen = quotes.find((q) => q.service === requestedService) ?? quotes[0];
+
   let shippingOptions: Stripe.Checkout.SessionCreateParams.ShippingOption[] = [
-    { shipping_rate_data: { display_name: settings.shipping_free_label ?? "Free Shipping (Australia)", type: "fixed_amount", fixed_amount: { amount: 0, currency: "aud" } } },
-    { shipping_rate_data: { display_name: settings.shipping_intl_label ?? "International Shipping", type: "fixed_amount", fixed_amount: { amount: intlCents, currency: "aud" } } },
+    {
+      shipping_rate_data: {
+        display_name: chosen.label,
+        type: "fixed_amount",
+        fixed_amount: { amount: chosen.priceCents, currency: "aud" },
+      },
+    },
   ];
 
   // cart-page discount code (validated server-side; anti-abuse checks inside)
@@ -86,8 +101,10 @@ export async function POST(req: NextRequest) {
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     line_items: lineItems,
+    // Pinned to the country the rate was quoted for — otherwise a shopper
+    // could take an Australia rate and then ship the parcel to Europe.
     shipping_address_collection: {
-      allowed_countries: ["AU", "FR", "US", "GB", "CA", "NZ", "DE", "BE", "NL", "CH", "IT", "ES", "PT", "IE", "BR", "JP"],
+      allowed_countries: [country as Stripe.Checkout.SessionCreateParams.ShippingAddressCollection.AllowedCountry],
     },
     shipping_options: shippingOptions,
     // Stripe forbids combining pre-applied discounts with the promo-code box

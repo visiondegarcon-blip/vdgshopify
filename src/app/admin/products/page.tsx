@@ -12,7 +12,7 @@ export type AdminProduct = {
   status: string;
   sort: number;
   product_images: { id: number; url: string; position: number }[];
-  variants: { id: number; title: string; price_cents: number; compare_at_cents: number | null; stock: number; position: number }[];
+  variants: { id: number; title: string; price_cents: number; compare_at_cents: number | null; stock: number; weight_g?: number; position: number }[];
 };
 
 export default function ProductsPage() {

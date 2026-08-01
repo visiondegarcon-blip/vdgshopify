@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { adminCall } from "../../adminApi";
+import RemoveBackground from "../../RemoveBackground";
 import { DEFAULT_ACCORDIONS } from "@/lib/defaultAccordions";
 import { TABS as ABOUT_TABS, SECTIONS as ABOUT_DEFAULTS } from "@/app/about-us/content";
 
@@ -163,13 +164,19 @@ export default function StoreEditor() {
     setMsg("Saved.");
   };
 
-  const uploadHero = async (file: File) => {
+  const uploadAsset = async (file: Blob, name?: string) => {
     const bytes = new Uint8Array(await file.arrayBuffer());
     let bin = "";
     for (let i = 0; i < bytes.length; i += 0x8000)
       bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    const r = await adminCall<{ url: string }>("upload_asset", { filename: file.name, base64: btoa(bin) });
-    setHome((h) => ({ ...h, hero_images: [...h.hero_images, r.url] }));
+    const filename = name ?? (file instanceof File ? file.name : "image.png");
+    const r = await adminCall<{ url: string }>("upload_asset", { filename, base64: btoa(bin) });
+    return r.url;
+  };
+
+  const uploadHero = async (file: File) => {
+    const url = await uploadAsset(file);
+    setHome((h) => ({ ...h, hero_images: [...h.hero_images, url] }));
   };
 
   return (
@@ -230,6 +237,20 @@ export default function StoreEditor() {
                   }
                   className="w-full rounded-lg border border-gray-300 px-2 py-1 text-xs"
                 />
+                {url && (
+                  <RemoveBackground
+                    src={url}
+                    label="BG"
+                    onSave={async (png) => {
+                      const newUrl = await uploadAsset(png, `nobg-${Date.now()}.png`);
+                      setHome((h) => ({
+                        ...h,
+                        hero_images: h.hero_images.map((u, j) => (j === i ? newUrl : u)),
+                      }));
+                      setMsg("Background removed — click Publish to go live.");
+                    }}
+                  />
+                )}
                 <button
                   onClick={() => setHome({ ...home, hero_images: home.hero_images.filter((_, j) => j !== i) })}
                   className="text-xs text-red-700"

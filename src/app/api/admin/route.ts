@@ -91,6 +91,123 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
+      case "refund_order": {
+        const { orderId, amountCents, restock } = body;
+        const { data: order } = await db
+          .from("orders")
+          .select("id,total_cents,refunded_cents,status,stripe_session_id,source")
+          .eq("id", orderId)
+          .single();
+        if (!order) throw new Error("Order not found");
+        if (order.source === "shopify")
+          throw new Error("This is an imported Shopify order — refund it in Shopify, not here.");
+        if (!order.stripe_session_id?.startsWith("cs_"))
+          throw new Error("This order has no Stripe payment to refund.");
+
+        const alreadyRefunded = order.refunded_cents ?? 0;
+        const remaining = order.total_cents - alreadyRefunded;
+        if (remaining <= 0) throw new Error("This order is already fully refunded.");
+
+        // Default to refunding whatever is still outstanding.
+        const amount = Math.min(
+          remaining,
+          Math.max(1, Math.round(Number(amountCents) || remaining))
+        );
+
+        const StripeLib = (await import("stripe")).default;
+        const stripe = new StripeLib(process.env.STRIPE_SECRET_KEY!);
+        const session = await stripe.checkout.sessions.retrieve(order.stripe_session_id);
+        const paymentIntent =
+          typeof session.payment_intent === "string"
+            ? session.payment_intent
+            : session.payment_intent?.id;
+        if (!paymentIntent) throw new Error("Could not find the Stripe payment for this order.");
+
+        await stripe.refunds.create({ payment_intent: paymentIntent, amount });
+
+        const refundedTotal = alreadyRefunded + amount;
+        await db
+          .from("orders")
+          .update({
+            refunded_cents: refundedTotal,
+            refunded_at: new Date().toISOString(),
+            status: refundedTotal >= order.total_cents ? "refunded" : "partially_refunded",
+          })
+          .eq("id", orderId);
+
+        // Optionally put the stock back on the shelf.
+        if (restock) {
+          const { data: items } = await db
+            .from("order_items")
+            .select("variant_id,quantity")
+            .eq("order_id", orderId);
+          for (const it of items ?? []) {
+            if (!it.variant_id) continue;
+            const { data: v } = await db.from("variants").select("stock").eq("id", it.variant_id).single();
+            if (v) await db.from("variants").update({ stock: v.stock + it.quantity }).eq("id", it.variant_id);
+          }
+        }
+
+        return NextResponse.json({ ok: true, refundedCents: refundedTotal });
+      }
+
+      case "list_shipping": {
+        const { data: regions } = await db.from("shipping_regions").select("*").order("sort");
+        const { data: rates } = await db.from("shipping_rates").select("*").order("max_weight_g");
+        const { data: settingsRows } = await db
+          .from("site_settings")
+          .select("key,value")
+          .in("key", ["shipping_default_weight_g", "shipping_overflow_enabled", "shipping_overflow_per_500g_cents"]);
+        return NextResponse.json({
+          regions: regions ?? [],
+          rates: rates ?? [],
+          settings: Object.fromEntries((settingsRows ?? []).map((s) => [s.key, s.value])),
+        });
+      }
+
+      case "save_region": {
+        const { id, name, countries, sort } = body;
+        const fields = {
+          name: String(name || "Untitled region"),
+          countries: (Array.isArray(countries) ? countries : [])
+            .map((c: string) => String(c).trim().toUpperCase())
+            .filter(Boolean),
+          sort: Number(sort) || 0,
+        };
+        if (id) {
+          await db.from("shipping_regions").update(fields).eq("id", id);
+          return NextResponse.json({ id });
+        }
+        const { data, error } = await db.from("shipping_regions").insert(fields).select().single();
+        if (error) throw error;
+        return NextResponse.json({ id: data.id });
+      }
+
+      case "delete_region": {
+        await db.from("shipping_regions").delete().eq("id", body.id);
+        return NextResponse.json({ ok: true });
+      }
+
+      case "save_rate": {
+        const { regionId, service, maxWeightG, priceCents } = body;
+        const row = {
+          region_id: Number(regionId),
+          service: service === "express" ? "express" : "standard",
+          max_weight_g: Math.max(1, Math.round(Number(maxWeightG) || 0)),
+          price_cents: Math.max(0, Math.round(Number(priceCents) || 0)),
+        };
+        const { error } = await db
+          .from("shipping_rates")
+          .upsert(row, { onConflict: "region_id,service,max_weight_g" });
+        if (error) throw error;
+        return NextResponse.json({ ok: true });
+      }
+
+      case "delete_rate": {
+        await db.from("shipping_rates").delete().eq("id", body.id);
+        return NextResponse.json({ ok: true });
+      }
+
       case "list_products": {
         const { data } = await db
           .from("products")
@@ -129,8 +246,8 @@ export async function POST(req: NextRequest) {
       }
 
       case "update_variant": {
-        const { id, fields } = body; // {title?, price_cents?, compare_at_cents?, stock?}
-        const allowed = ["title", "price_cents", "compare_at_cents", "stock", "position"];
+        const { id, fields } = body; // {title?, price_cents?, compare_at_cents?, stock?, weight_g?}
+        const allowed = ["title", "price_cents", "compare_at_cents", "stock", "weight_g", "position"];
         const patch = Object.fromEntries(Object.entries(fields).filter(([k]) => allowed.includes(k)));
         const { error } = await db.from("variants").update(patch).eq("id", id);
         if (error) throw error;

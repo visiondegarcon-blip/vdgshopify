@@ -4,7 +4,8 @@ import { adminCall } from "../adminApi";
 import { listTotpFactors, startEnroll, verifyEnroll, disableTotp } from "../mfa";
 
 /* Editable storefront settings — the pieces of the site that change between
-   drops without being products: banner text and shipping labels/rates. */
+   drops without being products. Shipping rates moved to their own Shipping
+   section, where they're priced per region and weight bracket. */
 
 const FIELDS: { key: string; label: string; help: string; type: "text" | "cents" }[] = [
   {
@@ -12,24 +13,6 @@ const FIELDS: { key: string; label: string; help: string; type: "text" | "cents"
     label: "Top banner text",
     help: "The black strip shown at the top of every store page. Leave empty to show a plain black bar.",
     type: "text",
-  },
-  {
-    key: "shipping_free_label",
-    label: "Free shipping option label",
-    help: "Shown at Stripe checkout as the $0 shipping choice.",
-    type: "text",
-  },
-  {
-    key: "shipping_intl_label",
-    label: "International shipping label",
-    help: "Shown at Stripe checkout as the paid shipping choice.",
-    type: "text",
-  },
-  {
-    key: "shipping_intl_cents",
-    label: "International shipping price (AUD)",
-    help: "Charged when the customer picks international shipping.",
-    type: "cents",
   },
 ];
 

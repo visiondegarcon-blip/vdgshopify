@@ -9,6 +9,7 @@ type Order = {
   currency: string;
   status: string;
   fulfillment_status: string;
+  refunded_cents?: number;
   source?: string;
   stripe_session_id?: string;
   shipping_name: string | null;
@@ -42,6 +43,34 @@ export default function OrdersPage() {
       await load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not update this order.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /* Refunds move real money, so this confirms the exact amount first and
+     asks whether the stock should go back on the shelf. */
+  const refund = async (o: Order) => {
+    const outstanding = o.total_cents - (o.refunded_cents ?? 0);
+    const raw = prompt(
+      `Refund how much to ${o.email}?\n\nEnter an amount in AUD, or leave as-is to refund the full ${fmt(outstanding, o.currency)} still outstanding on order #${o.id}.`,
+      (outstanding / 100).toFixed(2)
+    );
+    if (raw === null) return;
+    const amountCents = Math.round(parseFloat(raw) * 100);
+    if (!amountCents || amountCents < 1) return setErr("Enter a refund amount greater than zero.");
+    if (amountCents > outstanding)
+      return setErr(`That's more than the ${fmt(outstanding, o.currency)} still outstanding on this order.`);
+    if (!confirm(`Send ${fmt(amountCents, o.currency)} back to ${o.email}? This cannot be undone.`)) return;
+    const restock = confirm("Also put these items back into stock?\n\nOK = restock, Cancel = leave stock as-is.");
+
+    setErr(null);
+    setBusy(o.id);
+    try {
+      await adminCall("refund_order", { orderId: o.id, amountCents, restock });
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Refund failed.");
     } finally {
       setBusy(null);
     }
@@ -124,7 +153,7 @@ export default function OrdersPage() {
                             <div className="mt-1 text-gray-500">{o.email === "unknown" ? "—" : o.email}</div>
                           </div>
                         </div>
-                        <div className="flex items-start justify-end">
+                        <div className="flex flex-col items-end gap-2">
                           <button
                             onClick={(e) => { e.stopPropagation(); toggleFulfil(o); }}
                             disabled={busy === o.id}
@@ -134,6 +163,20 @@ export default function OrdersPage() {
                               ? "Saving…"
                               : o.fulfillment_status === "fulfilled" ? "Mark unfulfilled" : "Mark fulfilled"}
                           </button>
+                          {(o.refunded_cents ?? 0) > 0 && (
+                            <span className="text-[11px] text-gray-500">
+                              {fmt(o.refunded_cents ?? 0, o.currency)} refunded
+                            </span>
+                          )}
+                          {o.source !== "shopify" && (o.refunded_cents ?? 0) < o.total_cents && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); refund(o); }}
+                              disabled={busy === o.id}
+                              className="rounded-lg border border-red-300 px-4 py-2 text-sm text-red-700 disabled:opacity-60"
+                            >
+                              Refund customer
+                            </button>
+                          )}
                         </div>
                       </div>
                     </td>

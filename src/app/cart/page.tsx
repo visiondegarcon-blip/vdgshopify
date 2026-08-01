@@ -6,6 +6,9 @@ import Header from "@/components/Header";
 import { useCart } from "@/lib/cart";
 import { fmtPrice, supabase } from "@/lib/supabase";
 import { sessionId, track } from "@/lib/track";
+import { COUNTRY_NAMES } from "@/lib/countries";
+
+type ShippingQuote = { service: "standard" | "express"; label: string; priceCents: number; totalWeightG: number };
 
 export default function CartPage() {
   const { items, remove, setQty, totalCents } = useCart();
@@ -15,6 +18,14 @@ export default function CartPage() {
   const [code, setCode] = useState("");
   const [applied, setApplied] = useState<{ code: string; description: string } | null>(null);
   const [codeMsg, setCodeMsg] = useState<string | null>(null);
+  const [countries, setCountries] = useState<string[]>([]);
+  const [country, setCountry] = useState("");
+  const [quotes, setQuotes] = useState<ShippingQuote[]>([]);
+  const [service, setService] = useState<"standard" | "express">("standard");
+  const [shipMsg, setShipMsg] = useState<string | null>(null);
+  const [quoting, setQuoting] = useState(false);
+
+  const shipping = quotes.find((q) => q.service === service) ?? null;
 
   const applyCode = async () => {
     setCodeMsg(null);
@@ -44,7 +55,45 @@ export default function CartPage() {
       });
   }, []);
 
+  // Countries we actually ship to come from the admin's region table.
+  useEffect(() => {
+    fetch("/api/shipping-quote")
+      .then((r) => r.json())
+      .then((j) => {
+        const list: string[] = j.countries ?? [];
+        setCountries(list);
+        const saved = typeof window !== "undefined" ? localStorage.getItem("vdg-ship-country") : null;
+        if (saved && list.includes(saved)) setCountry(saved);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Re-quote whenever the destination or the cart contents change.
+  useEffect(() => {
+    if (!country || !items.length) return setQuotes([]);
+    localStorage.setItem("vdg-ship-country", country);
+    setQuoting(true);
+    setShipMsg(null);
+    fetch("/api/shipping-quote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        country,
+        items: items.map((i) => ({ variantId: i.variantId, qty: i.qty })),
+      }),
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        setQuotes(j.quotes ?? []);
+        if (j.error) setShipMsg(j.error);
+      })
+      .catch(() => setShipMsg("Couldn't load shipping rates."))
+      .finally(() => setQuoting(false));
+  }, [country, items]);
+
   const checkout = async () => {
+    if (!country) return setError("Choose where we're shipping to first.");
+    if (!shipping) return setError("No shipping option available for that destination.");
     setLoading(true);
     setError(null);
     track("checkout_started", { items: items.length, totalCents });
@@ -56,6 +105,8 @@ export default function CartPage() {
           items: items.map((i) => ({ variantId: i.variantId, qty: i.qty })),
           sid: sessionId(),
           discount_code: applied?.code ?? "",
+          country,
+          shipping_service: service,
         }),
       });
       const data = await res.json();
@@ -132,9 +183,69 @@ export default function CartPage() {
                 </button>
               </p>
             )}
-            <div className="mt-4 flex items-center justify-between">
-              <span className="text-sm">Total</span>
-              <span className="font-semibold">{fmtPrice(totalCents)} AUD</span>
+            <div className="mt-6 border-t border-black pt-4">
+              <label className="block text-sm font-semibold">Shipping to</label>
+              <select
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                className="mt-2 w-full border border-black px-3 py-2 font-mono text-sm"
+              >
+                <option value="">Select a country…</option>
+                {countries.map((c) => (
+                  <option key={c} value={c}>
+                    {COUNTRY_NAMES[c] ?? c}
+                  </option>
+                ))}
+              </select>
+
+              {quoting && <p className="mt-2 text-xs text-gray-500">Calculating shipping…</p>}
+              {shipMsg && <p className="mt-2 text-xs text-[#a51b1b]">{shipMsg}</p>}
+
+              {!quoting && quotes.length > 0 && (
+                <div className="mt-3 flex flex-col gap-2">
+                  {quotes.map((q) => (
+                    <label
+                      key={q.service}
+                      className={`flex cursor-pointer items-center justify-between border px-3 py-2 text-sm ${
+                        service === q.service ? "border-black" : "border-gray-300"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="shipping-service"
+                          checked={service === q.service}
+                          onChange={() => setService(q.service)}
+                        />
+                        {q.label}
+                      </span>
+                      <span className="font-semibold">
+                        {q.priceCents === 0 ? "Free" : fmtPrice(q.priceCents)}
+                      </span>
+                    </label>
+                  ))}
+                  <p className="text-[11px] text-gray-500">
+                    Parcel weight {(quotes[0].totalWeightG / 1000).toFixed(2)}kg
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 flex items-center justify-between text-sm">
+              <span>Subtotal</span>
+              <span>{fmtPrice(totalCents)}</span>
+            </div>
+            {shipping && (
+              <div className="mt-1 flex items-center justify-between text-sm">
+                <span>Shipping</span>
+                <span>{shipping.priceCents === 0 ? "Free" : fmtPrice(shipping.priceCents)}</span>
+              </div>
+            )}
+            <div className="mt-2 flex items-center justify-between border-t border-gray-300 pt-2">
+              <span className="text-sm font-semibold">Total</span>
+              <span className="font-semibold">
+                {fmtPrice(totalCents + (shipping?.priceCents ?? 0))} AUD
+              </span>
             </div>
             {error && <p className="mt-3 text-sm text-[#a51b1b]">{error}</p>}
             <button
@@ -145,7 +256,7 @@ export default function CartPage() {
               {loading ? "Redirecting…" : checkoutLabel}
             </button>
             <p className="mt-2 text-center text-xs text-gray-500">
-              Secure payment via Stripe · Free shipping Australia/France
+              Secure payment via Stripe
             </p>
           </>
         )}

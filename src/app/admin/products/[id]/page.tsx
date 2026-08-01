@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { adminCall } from "../../adminApi";
+import RemoveBackground from "../../RemoveBackground";
 import type { AdminProduct } from "../page";
 
 export default function ProductEditPage() {
@@ -32,14 +33,15 @@ export default function ProductEditPage() {
     flash("Saved"); load();
   };
 
-  const upload = async (file: File) => {
+  const upload = async (file: Blob, name?: string) => {
     // chunked base64 (spread syntax overflows the stack on big images)
     const bytes = new Uint8Array(await file.arrayBuffer());
     let bin = "";
     for (let i = 0; i < bytes.length; i += 0x8000) {
       bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 0x8000)));
     }
-    await adminCall("upload_image", { productId: p.id, filename: file.name, base64: btoa(bin) });
+    const filename = name ?? (file instanceof File ? file.name : "image.png");
+    await adminCall("upload_image", { productId: p.id, filename, base64: btoa(bin) });
     flash("Image uploaded"); load();
   };
 
@@ -107,15 +109,22 @@ export default function ProductEditPage() {
             </div>
             <div className="mt-3 flex flex-wrap gap-3">
               {[...p.product_images].sort((a, b) => a.position - b.position).map((img) => (
-                <div key={img.id} className="group relative">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={img.url} alt="" className="h-24 w-24 rounded-lg border border-gray-200 object-cover" />
-                  <button
-                    onClick={async () => { await adminCall("delete_image", { id: img.id }); load(); }}
-                    className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-black text-[10px] text-white group-hover:flex"
-                  >
-                    ✕
-                  </button>
+                <div key={img.id} className="flex w-24 flex-col items-stretch gap-1">
+                  <div className="group relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={img.url} alt="" className="h-24 w-24 rounded-lg border border-gray-200 object-cover" />
+                    <button
+                      onClick={async () => { await adminCall("delete_image", { id: img.id }); load(); }}
+                      className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-black text-[10px] text-white group-hover:flex"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <RemoveBackground
+                    src={img.url}
+                    label="Remove BG"
+                    onSave={async (png) => { await upload(png, `nobg-${Date.now()}.png`); }}
+                  />
                 </div>
               ))}
             </div>
@@ -142,6 +151,7 @@ export default function ProductEditPage() {
                   <th className="py-1.5 pr-2">Price (A$)</th>
                   <th className="py-1.5 pr-2">Was (A$)</th>
                   <th className="py-1.5 pr-2">Stock</th>
+                  <th className="py-1.5 pr-2">Weight (g)</th>
                   <th></th>
                 </tr>
               </thead>
@@ -175,6 +185,13 @@ export default function ProductEditPage() {
                       <input
                         type="number" defaultValue={v.stock}
                         onBlur={(e) => saveVariant(v.id, { stock: Math.max(0, parseInt(e.target.value || "0")) })}
+                        className="w-20 rounded-md border border-gray-200 px-2 py-1"
+                      />
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      <input
+                        type="number" defaultValue={v.weight_g ?? 500}
+                        onBlur={(e) => saveVariant(v.id, { weight_g: Math.max(0, parseInt(e.target.value || "0")) })}
                         className="w-20 rounded-md border border-gray-200 px-2 py-1"
                       />
                     </td>

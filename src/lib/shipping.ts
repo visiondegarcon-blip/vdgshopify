@@ -92,7 +92,9 @@ function priceForWeight(
  */
 export async function quoteShipping(
   countryCode: string,
-  items: { variantId: number; qty: number }[]
+  items: { variantId: number; qty: number }[],
+  /** Price a hypothetical weight instead of a real cart (admin rate checker). */
+  overrideWeightG?: number
 ): Promise<ShippingQuote[]> {
   const supabase = db();
   const country = countryCode.trim().toUpperCase();
@@ -123,7 +125,7 @@ export async function quoteShipping(
 
   // Weight is still reported in flat mode — it's useful on the packing slip
   // even when it doesn't affect the price.
-  const totalWeightG = await cartWeightG(items, defaultWeightG);
+  const totalWeightG = overrideWeightG ?? (await cartWeightG(items, defaultWeightG));
 
   const flatPrice = (service: ShippingService) =>
     service === "standard" ? region.flat_standard_cents : region.flat_express_cents;

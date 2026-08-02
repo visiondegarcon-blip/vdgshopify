@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { adminCall } from "../adminApi";
 import DragImage from "../DragImage";
 import { EMAIL_FONTS, blocksToHtml, type Block, type EmailFont } from "@/lib/emailHtml";
+import { countryName } from "@/lib/countries";
 
 /* Marketing: scroll-popup builder, audience (subscribers), campaigns with a
    block-based email template maker. Campaigns send through Resend using our
@@ -10,13 +11,13 @@ import { EMAIL_FONTS, blocksToHtml, type Block, type EmailFont } from "@/lib/ema
 
 type PopupCfg = {
   enabled: boolean; scroll_percent: number; heading: string; body: string; image: string;
-  image_pos: string; bg: string; fg: string; accent: string; discount_code: string; collect_phone: boolean;
+  image_pos: string; bg: string; fg: string; accent: string; discount_code: string; collect_phone: boolean; collect_country: boolean;
   font_head: string; font_body: string;
 };
 const POPUP_DEFAULTS: PopupCfg = {
   enabled: false, scroll_percent: 30, heading: "JOIN THE VISION",
   body: "Sign up and get a discount code for your first order.",
-  image: "", image_pos: "50% 50%", bg: "#000000", fg: "#ffffff", accent: "#FE0000", discount_code: "", collect_phone: false,
+  image: "", image_pos: "50% 50%", bg: "#000000", fg: "#ffffff", accent: "#FE0000", discount_code: "", collect_phone: false, collect_country: false,
   font_head: "", font_body: "",
 };
 const SITE_FONTS = [
@@ -30,7 +31,7 @@ const SITE_FONTS = [
 const fontVar = (k: string) => (k ? `var(--font-${k})` : undefined);
 
 type Subscriber = {
-  id: number; email: string; phone: string | null; source: string;
+  id: number; email: string; phone: string | null; country: string | null; source: string;
   consented_at: string; unsubscribed_at: string | null;
 };
 
@@ -123,9 +124,9 @@ export default function MarketingPage() {
 
   const exportSubs = () => {
     if (!subs) return;
-    const lines = ["email,phone,source,consented_at,unsubscribed"];
+    const lines = ["email,phone,country,source,consented_at,unsubscribed"];
     for (const s of subs)
-      lines.push(`${s.email},${s.phone ?? ""},${s.source},${s.consented_at},${s.unsubscribed_at ? "yes" : "no"}`);
+      lines.push(`${s.email},${s.phone ?? ""},${s.country ?? ""},${s.source},${s.consented_at},${s.unsubscribed_at ? "yes" : "no"}`);
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
     a.download = "vdg-audience.csv";
@@ -203,6 +204,10 @@ export default function MarketingPage() {
                 <label className="flex items-center gap-1.5 pb-1 text-[12px]">
                   <input type="checkbox" checked={popup.collect_phone} onChange={(e) => savePopup({ collect_phone: e.target.checked })} />
                   Phone field
+                </label>
+                <label className="flex items-center gap-1.5 pb-1 text-[12px]">
+                  <input type="checkbox" checked={popup.collect_country} onChange={(e) => savePopup({ collect_country: e.target.checked })} />
+                  Country field
                 </label>
               </div>
               <div className="flex gap-3">
@@ -282,13 +287,14 @@ export default function MarketingPage() {
           <div className="mt-4 overflow-hidden rounded-xl bg-white shadow-sm">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-left text-[12px] uppercase tracking-wide text-gray-500">
-                <tr><th className="px-4 py-2.5">Email</th><th className="px-4 py-2.5">Phone</th><th className="px-4 py-2.5">Source</th><th className="px-4 py-2.5">Signed up</th><th className="px-4 py-2.5">Status</th><th></th></tr>
+                <tr><th className="px-4 py-2.5">Email</th><th className="px-4 py-2.5">Phone</th><th className="px-4 py-2.5">Country</th><th className="px-4 py-2.5">Source</th><th className="px-4 py-2.5">Signed up</th><th className="px-4 py-2.5">Status</th><th></th></tr>
               </thead>
               <tbody>
                 {subs?.map((s) => (
                   <tr key={s.id} className="border-t border-gray-100">
                     <td className="px-4 py-2">{s.email}</td>
                     <td className="px-4 py-2">{s.phone ?? "—"}</td>
+                    <td className="px-4 py-2">{s.country ? countryName(s.country) : "—"}</td>
                     <td className="px-4 py-2 capitalize">{s.source}</td>
                     <td className="px-4 py-2">{new Date(s.consented_at).toLocaleDateString()}</td>
                     <td className="px-4 py-2">
@@ -302,7 +308,7 @@ export default function MarketingPage() {
                   </tr>
                 ))}
                 {subs && subs.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500">No contacts yet — the popup and countdown lock feed this list.</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500">No contacts yet — the popup and countdown lock feed this list.</td></tr>
                 )}
               </tbody>
             </table>

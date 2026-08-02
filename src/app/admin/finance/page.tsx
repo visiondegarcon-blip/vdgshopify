@@ -147,7 +147,44 @@ export default function FinancePage() {
           )}
 
           <div className="mt-4 rounded-xl bg-white p-5 shadow-sm">
-            <div className="text-sm font-semibold">Payouts to your bank</div>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Payouts to your bank</div>
+                {/* Payouts are on Manual by choice — money sits in the Stripe
+                    balance as a refund buffer until it's withdrawn there. */}
+                <p className="mt-1 max-w-md text-[12px] leading-relaxed text-gray-500">
+                  Your payouts are set to <strong>manual</strong>, so money stays in your Stripe balance
+                  until you withdraw it. Nothing appears below until you do. Withdrawing, and seeing
+                  your available balance, both happen in Stripe.
+                </p>
+              </div>
+              <a
+                href="https://dashboard.stripe.com/balance/overview"
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0 rounded-lg bg-[#635bff] px-4 py-2 text-sm font-medium text-white"
+              >
+                Open Stripe balance ↗
+              </a>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-3 text-[12px]">
+              <a
+                href="https://dashboard.stripe.com/payouts"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[#635bff] underline"
+              >
+                Payout history
+              </a>
+              <a
+                href="https://dashboard.stripe.com/settings/payouts"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[#635bff] underline"
+              >
+                Payout settings
+              </a>
+            </div>
             <table className="mt-3 w-full text-left text-sm">
               <thead className="text-xs text-gray-500">
                 <tr><th className="py-1.5">Arrives</th><th>Amount</th><th>Status</th></tr>
@@ -161,7 +198,11 @@ export default function FinancePage() {
                   </tr>
                 ))}
                 {data && data.payouts.length === 0 && (
-                  <tr><td colSpan={3} className="py-4 text-center text-gray-500">No payouts yet.</td></tr>
+                  <tr>
+                    <td colSpan={3} className="py-4 text-center text-gray-500">
+                      No payouts yet — withdraw from Stripe and they&apos;ll show here.
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>

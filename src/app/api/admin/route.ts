@@ -359,13 +359,20 @@ export async function POST(req: NextRequest) {
       }
 
       case "save_region": {
-        const { id, name, countries, sort } = body;
+        const { id, name, countries, sort, pricing_mode, flat_standard_cents, flat_express_cents } = body;
+        const money = (v: unknown) =>
+          v === null || v === undefined || v === "" ? null : Math.max(0, Math.round(Number(v) || 0));
         const fields = {
           name: String(name || "Untitled region"),
           countries: (Array.isArray(countries) ? countries : [])
             .map((c: string) => String(c).trim().toUpperCase())
             .filter(Boolean),
           sort: Number(sort) || 0,
+          pricing_mode: pricing_mode === "weight" ? "weight" : "flat",
+          // null means "this region doesn't offer that service" — distinct
+          // from 0, which is free shipping
+          flat_standard_cents: money(flat_standard_cents),
+          flat_express_cents: money(flat_express_cents),
         };
         if (id) {
           await db.from("shipping_regions").update(fields).eq("id", id);
@@ -463,6 +470,48 @@ export async function POST(req: NextRequest) {
       case "run_automations": {
         const result = await runDailyAutomations(db);
         return NextResponse.json(result);
+      }
+
+      /* Inventory: what's on the shelf against what has actually sold.
+         Units sold come from order_items rather than a counter column, so the
+         number can't drift out of sync with the orders themselves. */
+      case "inventory": {
+        const [{ data: variants }, { data: sold }, { data: waiting }] = await Promise.all([
+          db.from("variants").select("id,title,stock,price_cents,low_stock_alerted_at,product_id,products(title,handle,status)"),
+          db.from("order_items").select("variant_id,quantity,orders!inner(status)").eq("orders.status", "paid"),
+          db.from("restock_requests").select("variant_id").is("notified_at", null),
+        ]);
+
+        const soldBy = new Map<number, number>();
+        for (const r of sold ?? []) {
+          if (r.variant_id == null) continue;
+          soldBy.set(r.variant_id, (soldBy.get(r.variant_id) ?? 0) + (r.quantity ?? 0));
+        }
+        const waitingBy = new Map<number, number>();
+        for (const r of waiting ?? []) {
+          waitingBy.set(r.variant_id, (waitingBy.get(r.variant_id) ?? 0) + 1);
+        }
+
+        const { data: thresholdRow } = await db
+          .from("site_settings").select("value").eq("key", "low_stock_threshold").maybeSingle();
+        const threshold = Math.max(0, Number(thresholdRow?.value) || 3);
+
+        const rows = (variants ?? []).map((v) => {
+          const p = v.products as unknown as { title: string; handle: string; status: string } | null;
+          return {
+            id: v.id,
+            productId: v.product_id,
+            product: p?.title ?? "—",
+            handle: p?.handle ?? "",
+            status: p?.status ?? "draft",
+            variant: v.title,
+            stock: v.stock,
+            priceCents: v.price_cents,
+            sold: soldBy.get(v.id) ?? 0,
+            waiting: waitingBy.get(v.id) ?? 0,
+          };
+        });
+        return NextResponse.json({ rows, threshold });
       }
 
       case "list_restock_requests": {
@@ -880,7 +929,7 @@ export async function POST(req: NextRequest) {
       case "list_subscribers": {
         const { data } = await db
           .from("subscribers")
-          .select("id,email,phone,source,consented_at,unsubscribed_at,created_at")
+          .select("id,email,phone,country,source,consented_at,unsubscribed_at,created_at")
           .order("created_at", { ascending: false });
         return NextResponse.json({ subscribers: data ?? [] });
       }

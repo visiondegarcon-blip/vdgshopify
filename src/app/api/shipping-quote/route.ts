@@ -14,10 +14,16 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const country = typeof body?.country === "string" ? body.country : "";
   const items: { variantId: number; qty: number }[] = Array.isArray(body?.items) ? body.items : [];
-  if (!country) return NextResponse.json({ error: "Pick a delivery country" }, { status: 400 });
-  if (!items.length) return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
+  /* The admin's rate checker prices a hypothetical weight with no real cart.
+     It's read-only — it returns prices that are already public on the cart
+     page — so it needs no auth. */
+  const weightG = Number(body?.weightG);
+  const preview = Number.isFinite(weightG) && weightG >= 0 && !items.length;
 
-  const quotes = await quoteShipping(country, items);
+  if (!country) return NextResponse.json({ error: "Pick a delivery country" }, { status: 400 });
+  if (!items.length && !preview) return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
+
+  const quotes = await quoteShipping(country, items, preview ? weightG : undefined);
   if (!quotes.length) {
     return NextResponse.json(
       { error: "We don't ship to that country yet.", quotes: [] },

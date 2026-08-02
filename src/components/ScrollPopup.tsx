@@ -15,6 +15,7 @@ type PopupConfig = {
   accent: string;
   discount_code: string;
   collect_phone: boolean;
+  collect_country?: boolean;
   image_pos?: string;
   font_head?: string;
   font_body?: string;
@@ -121,7 +122,17 @@ export default function ScrollPopup() {
     const res = await fetch("/api/subscribe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, phone: fullPhone, source: "popup", sid: sessionId() }),
+      /* Only claim to know their country when they actually told us: either
+         the country field was shown, or they typed a phone number against a
+         dial code they chose. Otherwise it's just the AU default and would
+         quietly poison the audience data. */
+      body: JSON.stringify({
+        email,
+        phone: fullPhone,
+        country: cfg.collect_country || fullPhone ? country : null,
+        source: "popup",
+        sid: sessionId(),
+      }),
     });
     const j = await res.json();
     setBusy(false);
@@ -183,6 +194,22 @@ export default function ScrollPopup() {
                   className="w-full bg-transparent text-[15px] text-black outline-none"
                 />
               </div>
+              {cfg.collect_country && (
+                <div className="w-full rounded-lg bg-white px-4 py-2 text-left">
+                  <div className="text-[11px] text-gray-500">Country</div>
+                  <select
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                    className="w-full cursor-pointer bg-transparent text-[15px] text-black outline-none"
+                  >
+                    {COUNTRIES.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.flag} {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {cfg.collect_phone && (
                 <>
                   <div className="flex items-center gap-4 opacity-90">

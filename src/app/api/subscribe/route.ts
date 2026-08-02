@@ -11,6 +11,11 @@ export async function POST(req: NextRequest) {
   const phone = typeof body?.phone === "string" ? body.phone.trim() : "";
   const source = ["popup", "countdown"].includes(body?.source) ? body.source : "popup";
   const sid = typeof body?.sid === "string" ? body.sid.slice(0, 64) : null;
+  // stored as an ISO alpha-2 code; anything else is ignored rather than saved
+  const country =
+    typeof body?.country === "string" && /^[A-Za-z]{2}$/.test(body.country.trim())
+      ? body.country.trim().toUpperCase()
+      : null;
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: "Enter a valid email." }, { status: 400 });
@@ -23,7 +28,15 @@ export async function POST(req: NextRequest) {
   const { error } = await db
     .from("subscribers")
     .upsert(
-      { email, phone: phone || null, source, unsubscribed_at: null },
+      // country/phone are only written when supplied — this is an upsert, and
+      // a returning signup that skips them shouldn't erase what we already know
+      {
+        email,
+        source,
+        unsubscribed_at: null,
+        ...(phone ? { phone } : {}),
+        ...(country ? { country } : {}),
+      },
       { onConflict: "email" }
     );
   if (error) return NextResponse.json({ error: "Could not sign you up." }, { status: 500 });

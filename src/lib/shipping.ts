@@ -1,6 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 
-/* Weight-based shipping, priced per geographic region.
+/* Shipping, priced per geographic region.
+ *
+ * A region prices one of two ways. In "flat" mode (the simple default) it
+ * charges one price per service regardless of weight. In "weight" mode it uses
+ * the bracket ladder described below. Everything after this paragraph applies
+ * to weight mode only.
  *
  * A cart's total weight is the sum of each variant's weight_g (variants
  * default to the store's shipping_default_weight_g when unset). That total is
@@ -100,21 +105,35 @@ export async function quoteShipping(
     per500gCents: Math.max(0, parseInt(settings.shipping_overflow_per_500g_cents ?? "1500", 10) || 0),
   };
 
-  const { data: regions } = await supabase.from("shipping_regions").select("id,name,countries").order("sort");
+  const { data: regions } = await supabase
+    .from("shipping_regions")
+    .select("id,name,countries,pricing_mode,flat_standard_cents,flat_express_cents")
+    .order("sort");
   const region = (regions ?? []).find((r) => (r.countries ?? []).includes(country));
   if (!region) return [];
 
-  const { data: rates } = await supabase
-    .from("shipping_rates")
-    .select("service,max_weight_g,price_cents")
-    .eq("region_id", region.id);
-  if (!rates?.length) return [];
+  const flat = region.pricing_mode !== "weight";
+  const { data: rates } = flat
+    ? { data: [] as RateRow[] }
+    : await supabase
+        .from("shipping_rates")
+        .select("service,max_weight_g,price_cents")
+        .eq("region_id", region.id);
+  if (!flat && !rates?.length) return [];
 
+  // Weight is still reported in flat mode — it's useful on the packing slip
+  // even when it doesn't affect the price.
   const totalWeightG = await cartWeightG(items, defaultWeightG);
+
+  const flatPrice = (service: ShippingService) =>
+    service === "standard" ? region.flat_standard_cents : region.flat_express_cents;
 
   const quotes: ShippingQuote[] = [];
   for (const service of ["standard", "express"] as ShippingService[]) {
-    const priceCents = priceForWeight(rates, service, totalWeightG, overflow);
+    const priceCents = flat
+      ? // null (not 0) means "this region doesn't offer that service"
+        (flatPrice(service) ?? null)
+      : priceForWeight(rates ?? [], service, totalWeightG, overflow);
     if (priceCents === null) continue;
     quotes.push({
       service,

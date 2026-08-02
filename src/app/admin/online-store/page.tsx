@@ -2,26 +2,10 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { adminCall } from "../adminApi";
+import LockEditor from "./LockEditor";
 
 type Theme = { id: number; name: string; tokens: Record<string, string>; preset: boolean };
 type Snapshot = { id: number; name: string; created_at: string };
-type LockCfg = {
-  enabled: boolean; ends_at: string; heading: string; body: string; image: string;
-  bg: string; fg: string; accent: string; collect_email: boolean; collect_phone: boolean;
-};
-function toLocalInput(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-const LOCK_DEFAULTS: LockCfg = {
-  enabled: false, ends_at: "", heading: "NEXT DROP LOADING",
-  body: "Sign up and be first in when the clock hits zero.",
-  image: "/site/logo-white.png", bg: "#000000", fg: "#ffffff", accent: "#FE0000",
-  collect_email: true, collect_phone: false,
-};
-
 /* Shopify-style "Online Store" section: web-vitals speed report + sessions
    by device, plus entry points to the editor, themes and lock. */
 
@@ -53,10 +37,6 @@ export default function OnlineStorePage() {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const [lock, setLock] = useState<LockCfg>(LOCK_DEFAULTS);
-  const [lockMsg, setLockMsg] = useState<string | null>(null);
-  const lockRef = useRef<LockCfg>(LOCK_DEFAULTS);
-  const setLockBoth = (next: LockCfg) => { lockRef.current = next; setLock(next); };
 
   const refreshDesign = () => {
     adminCall<{ themes: Theme[]; activeId: string | null }>("list_themes").then((r) => {
@@ -64,25 +44,6 @@ export default function OnlineStorePage() {
       setActiveId(r.activeId);
     });
     adminCall<{ snapshots: Snapshot[] }>("list_snapshots").then((r) => setSnapshots(r.snapshots));
-    adminCall<{ settings: Record<string, string> }>("get_settings").then((r) => {
-      try {
-        setLockBoth({ ...LOCK_DEFAULTS, ...JSON.parse(r.settings.lock_config ?? "{}") });
-      } catch {}
-    });
-  };
-
-  // merges onto the latest state (ref), so a stale onBlur can never
-  // overwrite a fresher toggle click (QA bug 2)
-  const saveLock = async (patch: Partial<LockCfg> = {}) => {
-    const next = { ...lockRef.current, ...patch };
-    setLockBoth(next);
-    setLockMsg(null);
-    await adminCall("update_settings", { settings: { lock_config: JSON.stringify(next) } });
-    setLockMsg(
-      next.enabled
-        ? "Lock armed — /store and product pages show the countdown (bypass: add ?unlock=vdg)."
-        : "Lock disarmed."
-    );
   };
 
   useEffect(refreshDesign, []);
@@ -284,99 +245,7 @@ export default function OnlineStorePage() {
         )}
       </div>
 
-      {/* Countdown lock */}
-      <div className="mt-6 rounded-xl bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm font-semibold">Countdown lock</div>
-            <div className="text-[12px] text-gray-500">
-              Locks /store and product pages behind a drop countdown with signup. Home and About stay visible.
-            </div>
-          </div>
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={lock.enabled}
-              onChange={(e) => saveLock({ enabled: e.target.checked })}
-            />
-            {lock.enabled ? "Armed" : "Off"}
-          </label>
-        </div>
-        {lockMsg && <p className="mt-2 text-xs text-green-700">{lockMsg}</p>}
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <label className="text-[12px]">
-            Drop time
-            <input
-              type="datetime-local"
-              value={lock.ends_at ? toLocalInput(lock.ends_at) : ""}
-              onChange={(e) =>
-                setLockBoth({ ...lock, ends_at: e.target.value ? new Date(e.target.value).toISOString() : "" })
-              }
-              onBlur={() => saveLock()}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
-            />
-          </label>
-          <label className="text-[12px]">
-            Image URL
-            <input
-              value={lock.image}
-              onChange={(e) => setLockBoth({ ...lock, image: e.target.value })}
-              onBlur={() => saveLock()}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
-            />
-          </label>
-          <label className="text-[12px]">
-            Heading
-            <input
-              value={lock.heading}
-              onChange={(e) => setLockBoth({ ...lock, heading: e.target.value })}
-              onBlur={() => saveLock()}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
-            />
-          </label>
-          <label className="text-[12px]">
-            Body
-            <input
-              value={lock.body}
-              onChange={(e) => setLockBoth({ ...lock, body: e.target.value })}
-              onBlur={() => saveLock()}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
-            />
-          </label>
-          <div className="flex items-end gap-3">
-            {(["bg", "fg", "accent"] as const).map((k) => (
-              <label key={k} className="text-[12px]">
-                {k === "bg" ? "Background" : k === "fg" ? "Text" : "Accent"}
-                <input
-                  type="color"
-                  value={lock[k]}
-                  onChange={(e) => setLockBoth({ ...lock, [k]: e.target.value })}
-                  onBlur={() => saveLock()}
-                  className="mt-1 block h-8 w-14 cursor-pointer"
-                />
-              </label>
-            ))}
-          </div>
-          <div className="flex items-end gap-4 text-[12px]">
-            <label className="flex items-center gap-1.5">
-              <input
-                type="checkbox"
-                checked={lock.collect_email}
-                onChange={(e) => saveLock({ collect_email: e.target.checked })}
-              />
-              Email signup
-            </label>
-            <label className="flex items-center gap-1.5">
-              <input
-                type="checkbox"
-                checked={lock.collect_phone}
-                onChange={(e) => saveLock({ collect_phone: e.target.checked })}
-              />
-              Phone field
-            </label>
-          </div>
-        </div>
-      </div>
+      <LockEditor />
 
       {/* Sessions by device */}
       <div className="mt-6 rounded-xl bg-white p-5 shadow-sm">

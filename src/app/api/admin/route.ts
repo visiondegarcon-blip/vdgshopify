@@ -478,14 +478,29 @@ export async function POST(req: NextRequest) {
       case "inventory": {
         const [{ data: variants }, { data: sold }, { data: waiting }] = await Promise.all([
           db.from("variants").select("id,title,stock,price_cents,low_stock_alerted_at,product_id,products(title,handle,status)"),
-          db.from("order_items").select("variant_id,quantity,orders!inner(status)").eq("orders.status", "paid"),
+          db
+            .from("order_items")
+            .select("variant_id,product_title,variant_title,quantity,orders!inner(status)")
+            .eq("orders.status", "paid"),
           db.from("restock_requests").select("variant_id").is("notified_at", null),
         ]);
 
+        /* Orders imported from Shopify recorded titles, not variant ids, so
+           counting on variant_id alone would report zero sales for the entire
+           history. Fall back to matching the titles. */
+        const byTitle = new Map<string, number>();
+        for (const v of variants ?? []) {
+          const p = v.products as unknown as { title: string } | null;
+          byTitle.set(`${(p?.title ?? "").toLowerCase()}|${v.title.toLowerCase()}`, v.id);
+        }
+
         const soldBy = new Map<number, number>();
         for (const r of sold ?? []) {
-          if (r.variant_id == null) continue;
-          soldBy.set(r.variant_id, (soldBy.get(r.variant_id) ?? 0) + (r.quantity ?? 0));
+          const id =
+            r.variant_id ??
+            byTitle.get(`${(r.product_title ?? "").toLowerCase()}|${(r.variant_title ?? "").toLowerCase()}`);
+          if (id == null) continue;
+          soldBy.set(id, (soldBy.get(id) ?? 0) + (r.quantity ?? 0));
         }
         const waitingBy = new Map<number, number>();
         for (const r of waiting ?? []) {

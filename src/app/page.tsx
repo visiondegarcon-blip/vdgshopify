@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import HeroBackground from "@/components/HeroBackground";
+import LocalClock from "@/components/LocalClock";
 import { getSettings, jsonSetting } from "@/lib/theme";
 
 export const revalidate = 60;
@@ -54,9 +55,7 @@ export default async function Home() {
           height={65}
           className="object-contain"
         />
-        <div className="mt-3 font-platypi text-xs tracking-[2px] text-white">
-          02/22/2023&nbsp;&nbsp;&nbsp;2:22PM
-        </div>
+        <LocalClock className="mt-3 font-platypi text-xs tracking-[2px] text-white" />
         <nav className="mt-2 w-[130px] text-center">
           {nav.map((n) =>
             n.external ? (

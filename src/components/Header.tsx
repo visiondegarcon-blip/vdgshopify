@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useCart } from "@/lib/cart";
+import LocalClock from "@/components/LocalClock";
 import { supabase } from "@/lib/supabase";
 
 /* Banner text is editable from the admin Settings page; cached in
@@ -63,9 +64,7 @@ export default function Header({
               />
             </Link>
           )}
-          <div className="mt-2 text-xs tracking-[2px]">
-            02/22/2023&nbsp;&nbsp;&nbsp;2:22PM
-          </div>
+          <LocalClock className="mt-2 text-xs tracking-[2px]" />
           {showCart && (
             <div className="mt-2 flex items-center gap-4 text-sm font-bold">
               <Link href="/cart">

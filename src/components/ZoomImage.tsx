@@ -16,8 +16,10 @@ const GAP = 24; // distance from the cursor to the lens edge
    detail to show, but shipping those originals to the browser is what made
    product pages crawl. Route them through Next's image optimizer instead: the
    file on disk stays untouched, the visitor gets a right-sized WebP.
-   Widths must be ones Next is configured to emit (deviceSizes). */
-export function optimized(src: string, w: 1080 | 1920 | 2048 | 3840, q = 80) {
+   Width and quality must both be values Next is configured to emit — it
+   answers anything else with a 400, so they're typed as literals here rather
+   than plain numbers. Allowed qualities live in next.config.ts. */
+export function optimized(src: string, w: 1080 | 1920 | 2048 | 3840, q: 75 | 90 = 75) {
   if (!src || src.startsWith("data:")) return src;
   return `/_next/image?url=${encodeURIComponent(src)}&w=${w}&q=${q}`;
 }

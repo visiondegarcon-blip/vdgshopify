@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import Image from "next/image";
 
 export default function MusicPlayer() {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -46,11 +47,12 @@ export default function MusicPlayer() {
   return (
     <div className="fixed bottom-3 right-3 z-50 flex items-center gap-1">
       <audio ref={audioRef} src="/site/music.mp3" loop preload="none" />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <Image
         src="/site/earth.png"
         alt="music-cover"
-        className={`w-[70px] h-[70px] ${playing ? "animate-spin-slow" : ""}`}
+        width={70}
+        height={70}
+        className={playing ? "animate-spin-slow" : ""}
       />
       <button
         onClick={toggle}

@@ -10,12 +10,12 @@ import { countryName } from "@/lib/countries";
    own subscriber list and per-recipient unsubscribe tokens. */
 
 type PopupCfg = {
-  enabled: boolean; scroll_percent: number; heading: string; body: string; image: string;
+  enabled: boolean; delay_seconds: number; heading: string; body: string; image: string;
   image_pos: string; bg: string; fg: string; accent: string; discount_code: string; collect_phone: boolean; collect_country: boolean;
   font_head: string; font_body: string;
 };
 const POPUP_DEFAULTS: PopupCfg = {
-  enabled: false, scroll_percent: 30, heading: "JOIN THE VISION",
+  enabled: false, delay_seconds: 8, heading: "JOIN THE VISION",
   body: "Sign up and get a discount code for your first order.",
   image: "", image_pos: "50% 50%", bg: "#000000", fg: "#ffffff", accent: "#FE0000", discount_code: "", collect_phone: false, collect_country: false,
   font_head: "", font_body: "",
@@ -161,11 +161,14 @@ export default function MarketingPage() {
             {popupMsg && <p className="mt-1 text-xs text-green-700">{popupMsg}</p>}
             <div className="mt-4 grid gap-3">
               <label className="text-[12px]">
-                Shows after scrolling {popup.scroll_percent}% of the page
-                <input type="range" min={5} max={95} step={5} value={popup.scroll_percent}
-                  onChange={(e) => setPopupBoth({ ...popup, scroll_percent: Number(e.target.value) })}
+                Shows after {popup.delay_seconds}s spent on the site
+                <input type="range" min={1} max={60} step={1} value={popup.delay_seconds}
+                  onChange={(e) => setPopupBoth({ ...popup, delay_seconds: Number(e.target.value) })}
                   onMouseUp={() => savePopup()} onTouchEnd={() => savePopup()}
                   className="mt-1 w-full" />
+                <span className="text-[11px] text-gray-400">
+                  Counts time the tab is actually in front, not wall-clock time.
+                </span>
               </label>
               <label className="text-[12px]">Heading
                 <input value={popup.heading} onChange={(e) => setPopupBoth({ ...popup, heading: e.target.value })} onBlur={() => savePopup()}

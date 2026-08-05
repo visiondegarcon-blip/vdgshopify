@@ -6,7 +6,7 @@ import { sessionId, track } from "@/lib/track";
 
 type PopupConfig = {
   enabled: boolean;
-  scroll_percent: number;
+  delay_seconds: number;
   heading: string;
   body: string;
   image: string;
@@ -54,9 +54,12 @@ const COUNTRIES: { code: string; dial: string; flag: string; name: string }[] = 
   { code: "AE", dial: "+971", flag: "🇦🇪", name: "United Arab Emirates" },
 ];
 
-/* Scroll-triggered signup popup, configured from the admin Marketing tab.
+/* Time-triggered signup popup, configured from the admin Marketing tab.
    Shopify-style layout: image panel left, form right, flag dial-code picker.
-   Shows once, then stays hidden for 30 days (or forever after signup). */
+   Opens after `delay_seconds` of time actually spent on the site (not
+   elapsed wall-clock) so a visitor who tabs away and back doesn't get it
+   fired the moment they return. Shows once, then stays hidden for 30 days
+   (or forever after signup). */
 export default function ScrollPopup() {
   const pathname = usePathname();
   const [cfg, setCfg] = useState<PopupConfig | null>(null);
@@ -90,19 +93,19 @@ export default function ScrollPopup() {
 
   useEffect(() => {
     if (!cfg || open) return;
-    const target = Math.min(95, Math.max(5, cfg.scroll_percent || 30));
-    const onScroll = () => {
-      const doc = document.documentElement;
-      const scrollable = doc.scrollHeight - innerHeight;
-      const pct = scrollable > 0 ? (scrollY / scrollable) * 100 : 100;
-      if (pct >= target) {
+    const target = Math.min(120, Math.max(1, cfg.delay_seconds ?? 8));
+    let spent = 0;
+    const tick = () => {
+      // only count time the tab is actually in front — a backgrounded tab
+      // shouldn't rack up "time on site" while nobody's looking at it
+      if (!document.hidden) spent += 1;
+      if (spent >= target) {
         setOpen(true);
-        removeEventListener("scroll", onScroll);
+        clearInterval(id);
       }
     };
-    addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-    return () => removeEventListener("scroll", onScroll);
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
   }, [cfg, open]);
 
   if (!cfg || !open || excluded) return null;

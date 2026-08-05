@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { adminCall } from "../../adminApi";
 import RemoveBackground from "../../RemoveBackground";
+import { QUALITY_LABEL, kb, prepareImage, type UploadQuality } from "@/lib/imageUpload";
 import type { AdminProduct } from "../page";
 
 export default function ProductEditPage() {
@@ -12,6 +13,9 @@ export default function ProductEditPage() {
   const [p, setP] = useState<AdminProduct | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [quality, setQuality] = useState<UploadQuality>("full");
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
 
   const load = useCallback(() => {
     adminCall<{ products: AdminProduct[] }>("list_products").then((r) =>
@@ -31,6 +35,22 @@ export default function ProductEditPage() {
   const saveVariant = async (vid: number, fields: Record<string, unknown>) => {
     await adminCall("update_variant", { id: vid, fields });
     flash("Saved"); load();
+  };
+
+  /* Re-encodes in the browser first, so the bucket only ever receives JPEGs
+     at the size the admin actually chose. */
+  const uploadPhoto = async (file: File) => {
+    setUploadErr(null);
+    setUploading(true);
+    try {
+      const prepared = await prepareImage(file, quality);
+      await upload(prepared.blob, prepared.filename);
+      flash(`Uploaded ${prepared.width}×${prepared.height} · ${kb(prepared.blob.size)}`);
+    } catch (e) {
+      setUploadErr(e instanceof Error ? e.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const upload = async (file: Blob, name?: string) => {
@@ -111,16 +131,45 @@ export default function ProductEditPage() {
 
           {/* Media */}
           <div className="rounded-xl bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-sm font-semibold">Media</div>
-              <button onClick={() => fileRef.current?.click()} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">
-                Upload image
-              </button>
+              <div className="flex items-center gap-2">
+                <select
+                  value={quality}
+                  onChange={(e) => setQuality(e.target.value as UploadQuality)}
+                  className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs"
+                >
+                  {(Object.keys(QUALITY_LABEL) as UploadQuality[]).map((k) => (
+                    <option key={k} value={k}>{QUALITY_LABEL[k]}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-60"
+                >
+                  {uploading ? "Uploading…" : "Upload image"}
+                </button>
+              </div>
               <input
-                ref={fileRef} type="file" accept="image/*" className="hidden"
-                onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
+                ref={fileRef} type="file" accept="image/*,.heic,.heif" className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  // reset so re-picking the same file still fires onChange
+                  e.target.value = "";
+                  if (f) uploadPhoto(f);
+                }}
               />
             </div>
+            <p className="mt-1 text-[11px] text-gray-500">
+              Photos are converted to JPG before upload to save storage.{" "}
+              <strong>Full quality</strong> keeps the original size — use it for shots customers zoom
+              into. <strong>Compact</strong> caps the long edge at 2000px — fine for flat garment
+              mockups.
+            </p>
+            {uploadErr && (
+              <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800">{uploadErr}</p>
+            )}
             <div className="mt-3 flex flex-wrap gap-3">
               {[...p.product_images].sort((a, b) => a.position - b.position).map((img) => (
                 <div key={img.id} className="flex w-24 flex-col items-stretch gap-1">

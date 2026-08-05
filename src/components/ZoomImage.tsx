@@ -12,6 +12,16 @@ const LENS_W = 165;
 const LENS_H = 260;
 const GAP = 24; // distance from the cursor to the lens edge
 
+/* Source photos are kept at full resolution on disk so the magnifier has real
+   detail to show, but shipping those originals to the browser is what made
+   product pages crawl. Route them through Next's image optimizer instead: the
+   file on disk stays untouched, the visitor gets a right-sized WebP.
+   Widths must be ones Next is configured to emit (deviceSizes). */
+export function optimized(src: string, w: 1080 | 1920 | 2048 | 3840, q = 80) {
+  if (!src || src.startsWith("data:")) return src;
+  return `/_next/image?url=${encodeURIComponent(src)}&w=${w}&q=${q}`;
+}
+
 export default function ZoomImage({ src, alt }: { src: string; alt: string }) {
   const wrap = useRef<HTMLDivElement>(null);
   const img = useRef<HTMLImageElement>(null);
@@ -62,7 +72,12 @@ export default function ZoomImage({ src, alt }: { src: string; alt: string }) {
   return (
     <div ref={wrap} className="relative" onMouseMove={move} onMouseLeave={() => setLens(null)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img ref={img} src={src} alt={alt} className="max-h-[80vh] w-full object-contain object-top" />
+      <img
+        ref={img}
+        src={optimized(src, 1920)}
+        alt={alt}
+        className="max-h-[80vh] w-full object-contain object-top"
+      />
       {lens && (
         <div
           aria-hidden
@@ -72,7 +87,9 @@ export default function ZoomImage({ src, alt }: { src: string; alt: string }) {
             top: lens.top,
             width: LENS_W,
             height: LENS_H,
-            backgroundImage: `url(${JSON.stringify(src)})`,
+            // a larger, higher-quality variant so the magnifier actually
+            // resolves detail the on-page image doesn't have
+            backgroundImage: `url(${JSON.stringify(optimized(src, 3840, 90))})`,
             backgroundSize: `${lens.bgW}px ${lens.bgH}px`,
             backgroundPosition: `-${lens.bgX}px -${lens.bgY}px`,
           }}

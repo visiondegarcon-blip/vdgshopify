@@ -6,6 +6,11 @@ import Image from "next/image";
 export default function MusicPlayer() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
+  /* The globe spins from the moment the page loads, not only once audio is
+     actually playing — browsers block autoplay until the visitor interacts, so
+     tying the animation to `playing` left it sitting frozen on arrival. It
+     only stops when they deliberately press pause. */
+  const [stopped, setStopped] = useState(false);
   const pathname = usePathname();
   const onAdmin = pathname.startsWith("/admin");
 
@@ -39,7 +44,9 @@ export default function MusicPlayer() {
     if (playing) {
       a.pause();
       setPlaying(false);
+      setStopped(true);
     } else {
+      setStopped(false);
       a.play().then(() => setPlaying(true)).catch(() => {});
     }
   };
@@ -52,14 +59,26 @@ export default function MusicPlayer() {
         alt="music-cover"
         width={70}
         height={70}
-        className={playing ? "animate-spin-slow" : ""}
+        className={stopped ? "" : "animate-spin-slow"}
       />
       <button
         onClick={toggle}
         aria-label={playing ? "Pause music" : "Play music"}
-        className="text-[#FE0000] text-2xl leading-none cursor-pointer select-none"
+        className="cursor-pointer leading-none text-[#FE0000]"
       >
-        {playing ? "❚❚" : "▶"}
+        {/* Drawn as SVG rather than the ▶ / ❚❚ characters: phones render those
+            as full-colour emoji, which is why the control looked wrong on
+            mobile but fine on desktop. */}
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          {playing ? (
+            <>
+              <rect x="6" y="4" width="4" height="16" rx="1" />
+              <rect x="14" y="4" width="4" height="16" rx="1" />
+            </>
+          ) : (
+            <path d="M7 4.5v15a1 1 0 0 0 1.54.84l11.2-7.5a1 1 0 0 0 0-1.68L8.54 3.66A1 1 0 0 0 7 4.5Z" />
+          )}
+        </svg>
       </button>
     </div>
   );

@@ -5,6 +5,7 @@ import { useCart } from "@/lib/cart";
 import { fmtPrice, type Product } from "@/lib/supabase";
 import { track } from "@/lib/track";
 import { DEFAULT_ACCORDIONS } from "@/lib/defaultAccordions";
+import Image from "next/image";
 import ZoomImage from "@/components/ZoomImage";
 import RestockNotify from "@/components/RestockNotify";
 
@@ -95,10 +96,13 @@ export default function ProductClient({
                 aria-label={`Show photo ${i + 1}`}
                 className="block"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                {/* 56px on screen — served at 56px rather than pulling the
+                    full-resolution original down for every thumbnail */}
+                <Image
                   src={img.url}
                   alt=""
+                  width={56}
+                  height={56}
                   className={`h-14 w-14 object-cover ${i === featured ? "outline outline-2 outline-black" : "opacity-90 hover:opacity-100"}`}
                 />
               </button>

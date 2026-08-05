@@ -591,7 +591,10 @@ export async function POST(req: NextRequest) {
       case "upload_image": {
         // base64 payload from the admin UI -> Supabase Storage (public bucket)
         const { productId, filename, base64 } = body;
-        const ext = (filename.split(".").pop() || "png").toLowerCase();
+        const ext = (filename.split(".").pop() || "jpg").toLowerCase();
+        // the admin re-encodes to JPEG client-side; anything else here is
+        // either a background-removal PNG or an unexpected payload
+        if (!["png", "jpg", "jpeg", "webp"].includes(ext)) throw new Error("Unsupported file type");
         const path = `p${productId}/${Date.now()}.${ext}`;
         const buf = Buffer.from(base64, "base64");
         const { error } = await db.storage.from("product-images").upload(path, buf, {

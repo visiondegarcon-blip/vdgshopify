@@ -148,7 +148,7 @@ export default function ScrollPopup() {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4" onClick={dismiss}>
       <div
-        className="relative grid w-full max-w-[880px] overflow-hidden shadow-2xl sm:grid-cols-2"
+        className="relative grid w-full max-w-[640px] overflow-hidden shadow-2xl sm:grid-cols-2"
         style={{ background: cfg.bg, color: cfg.fg, borderRadius: 10 }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -157,11 +157,11 @@ export default function ScrollPopup() {
           <img
             src={cfg.image}
             alt=""
-            className="hidden h-full min-h-[560px] w-full object-cover sm:block"
+            className="hidden h-full min-h-[420px] w-full object-cover sm:block"
             style={{ objectPosition: cfg.image_pos || "50% 50%" }}
           />
         ) : (
-          <div className="hidden min-h-[560px] sm:block" style={{ background: `${cfg.accent}22` }} />
+          <div className="hidden min-h-[420px] sm:block" style={{ background: `${cfg.accent}22` }} />
         )}
         <button
           onClick={dismiss}
@@ -171,39 +171,39 @@ export default function ScrollPopup() {
         >
           ✕
         </button>
-        <div className="flex flex-col justify-center px-8 py-10 text-center sm:px-10" style={{ fontFamily: popupFont(cfg.font_body) }}>
+        <div className="flex flex-col justify-center px-6 py-7 text-center sm:px-7" style={{ fontFamily: popupFont(cfg.font_body) }}>
           {cfg.image && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={cfg.image}
               alt=""
-              className="mb-5 h-32 w-full rounded-lg object-cover sm:hidden"
+              className="mb-4 h-28 w-full rounded-lg object-cover sm:hidden"
               style={{ objectPosition: cfg.image_pos || "50% 50%" }}
             />
           )}
-          <h2 className="text-[27px] font-bold leading-snug" style={{ fontFamily: popupFont(cfg.font_head) ?? "var(--vdg-font-body)" }}>
+          <h2 className="text-[20px] font-bold leading-snug" style={{ fontFamily: popupFont(cfg.font_head) ?? "var(--vdg-font-head)" }}>
             {cfg.heading}
           </h2>
-          <p className="mt-3 text-[15px] italic opacity-85">{cfg.body}</p>
+          <p className="mt-2 text-[13px] italic opacity-85">{cfg.body}</p>
           {code == null ? (
-            <form onSubmit={submit} className="mt-7 flex flex-col gap-3">
-              <div className="rounded-lg bg-white px-4 py-2 text-left">
-                <div className="text-[11px] text-gray-500">Email</div>
+            <form onSubmit={submit} className="mt-5 flex flex-col gap-2.5">
+              <div className="rounded-lg bg-white px-3.5 py-1.5 text-left">
+                <div className="text-[10px] text-gray-500">Email</div>
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-transparent text-[15px] text-black outline-none"
+                  className="w-full bg-transparent text-[13px] text-black outline-none"
                 />
               </div>
               {cfg.collect_country && (
-                <div className="w-full rounded-lg bg-white px-4 py-2 text-left">
-                  <div className="text-[11px] text-gray-500">Country</div>
+                <div className="w-full rounded-lg bg-white px-3.5 py-1.5 text-left">
+                  <div className="text-[10px] text-gray-500">Country</div>
                   <select
                     value={country}
                     onChange={(e) => setCountry(e.target.value)}
-                    className="w-full cursor-pointer bg-transparent text-[15px] text-black outline-none"
+                    className="w-full cursor-pointer bg-transparent text-[13px] text-black outline-none"
                   >
                     {COUNTRIES.map((c) => (
                       <option key={c.code} value={c.code}>
@@ -220,9 +220,9 @@ export default function ScrollPopup() {
                     <span className="text-sm">or</span>
                     <span className="h-px flex-1" style={{ background: cfg.fg }} />
                   </div>
-                  <div className="flex gap-3">
-                    <div className="relative flex w-[104px] shrink-0 items-center justify-center rounded-lg bg-white">
-                      <span className="pointer-events-none text-[30px] leading-none">
+                  <div className="flex gap-2.5">
+                    <div className="relative flex w-[86px] shrink-0 items-center justify-center rounded-lg bg-white">
+                      <span className="pointer-events-none text-[24px] leading-none">
                         {COUNTRIES.find((c) => c.code === country)?.flag}
                       </span>
                       <select
@@ -238,9 +238,9 @@ export default function ScrollPopup() {
                         ))}
                       </select>
                     </div>
-                    <div className="w-full rounded-lg bg-white px-4 py-2 text-left">
-                      <div className="text-[11px] text-gray-500">Phone</div>
-                      <div className="flex items-center gap-1 text-[15px] text-black">
+                    <div className="w-full rounded-lg bg-white px-3.5 py-1.5 text-left">
+                      <div className="text-[10px] text-gray-500">Phone</div>
+                      <div className="flex items-center gap-1 text-[13px] text-black">
                         <span>{dial}</span>
                         <input
                           type="tel"
@@ -257,7 +257,7 @@ export default function ScrollPopup() {
               <button
                 type="submit"
                 disabled={busy}
-                className="mt-2 w-full rounded-lg px-4 py-3.5 text-[16px] font-semibold disabled:opacity-60"
+                className="mt-1.5 w-full rounded-lg px-4 py-2.5 text-[14px] font-semibold disabled:opacity-60"
                 style={{ background: cfg.accent, color: cfg.bg }}
               >
                 {busy ? "…" : "Join"}

@@ -63,6 +63,7 @@ export default function StoreEditor() {
   const [navLabels, setNavLabels] = useState<NavLabels | null>(null);
   const [accordions, setAccordions] = useState<Accordion[] | null>(null);
   const [banner, setBanner] = useState("");
+  const [favicon, setFavicon] = useState("");
   const [home, setHome] = useState<HomeCfg>({ hero_images: [], hero_mobile: "", hero_rotate: false, hero_interval_s: 8 });
   const [buttons, setButtons] = useState<Buttons>({
     add_to_cart: "Add To Cart", sold_out: "Sold Out", view_cart: "View Cart", checkout: "Checkout",
@@ -87,6 +88,7 @@ export default function StoreEditor() {
     loadProducts();
     adminCall<{ settings: Record<string, string> }>("get_settings").then((r) => {
       setBanner(r.settings.banner_text ?? "");
+      setFavicon(r.settings.favicon_url ?? "");
       const json = <T,>(key: string, fb: T): T => {
         try { return { ...fb, ...JSON.parse(r.settings[key] ?? "{}") }; } catch { return fb; }
       };
@@ -129,6 +131,7 @@ export default function StoreEditor() {
       await adminCall("update_settings", {
         settings: {
           banner_text: banner,
+          favicon_url: favicon,
           content_home: JSON.stringify({ navLabels, ...home }),
           content_product: JSON.stringify({ accordions }),
           content_buttons: JSON.stringify(buttons),
@@ -213,6 +216,39 @@ export default function StoreEditor() {
           <div className="mt-5">
             <h2 className="text-[13px] font-semibold uppercase tracking-wide text-gray-500">Top banner text</h2>
             <input value={banner} onChange={(e) => setBanner(e.target.value)} className={input} />
+
+            <h2 className="mt-6 text-[13px] font-semibold uppercase tracking-wide text-gray-500">Browser tab icon</h2>
+            <p className="mt-1 text-[11px] text-gray-400">
+              Shows in the browser tab and bookmarks. Upload a square PNG or JPG (512×512 works well).
+            </p>
+            <div className="mt-2 flex items-center gap-3">
+              {favicon ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={favicon} alt="" className="h-10 w-10 rounded border border-gray-200 object-contain" />
+              ) : (
+                <div className="h-10 w-10 rounded border border-dashed border-gray-300" />
+              )}
+              <label className="cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-xs">
+                Upload…
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file) return;
+                    const url = await uploadAsset(file);
+                    setFavicon(url);
+                  }}
+                />
+              </label>
+              {favicon && (
+                <button onClick={() => setFavicon("")} className="text-xs text-red-700">
+                  Remove
+                </button>
+              )}
+            </div>
           </div>
         )}
 

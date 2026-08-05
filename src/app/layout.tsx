@@ -22,11 +22,16 @@ const oswald = Oswald({ subsets: ["latin"], variable: "--font-oswald" });
 const gochi = Gochi_Hand({ weight: "400", subsets: ["latin"], variable: "--font-gochi" });
 const orbitron = Orbitron({ subsets: ["latin"], variable: "--font-orbitron" });
 
-export const metadata: Metadata = {
-  title: "Vision De Garçon | No Congo No Tesla",
-  description:
-    "Vision De Garçon (VDG) — a humanitarian platform and clothing brand. A voice for the unspoken.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getSettings();
+  const favicon = settings.favicon_url;
+  return {
+    title: "Vision De Garçon | No Congo No Tesla",
+    description:
+      "Vision De Garçon (VDG) — a humanitarian platform and clothing brand. A voice for the unspoken.",
+    icons: favicon ? { icon: favicon } : undefined,
+  };
+}
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const [baseTheme, settings, h] = await Promise.all([getActiveTheme(), getSettings(), headers()]);

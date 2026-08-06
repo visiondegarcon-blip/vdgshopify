@@ -2,8 +2,12 @@ import { createClient } from "@supabase/supabase-js";
 
 /* Server-side discount validation shared by /api/validate-discount and
    /api/checkout. Uses the service role (discount tables are RLS-locked).
-   Anti-abuse checks are cookie/session-id based (sid), plus email recorded
-   at webhook time for the audit trail. */
+   Anti-abuse checks key on `guardId` — a server-issued httpOnly cookie
+   (src/lib/guardId.ts), not the client-supplied analytics `sid`, which a
+   shopper could rotate per request to bypass one_per_customer/first_order.
+   Email is also recorded at webhook time for the human-readable audit trail,
+   but Stripe hosted checkout only reveals it after payment, so it can't be
+   checked pre-purchase. */
 
 export type DiscountRow = {
   id: number;
@@ -34,7 +38,7 @@ export function describeDiscount(d: DiscountRow): string {
 export async function validateDiscount(
   code: string,
   subtotalCents: number,
-  sid: string
+  guardId: string
 ): Promise<{ row: DiscountRow } | { error: string }> {
   const clean = String(code).toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 20);
   if (!clean) return { error: "Enter a code." };
@@ -48,22 +52,22 @@ export async function validateDiscount(
   const r = d.restrictions ?? {};
   if (r.min_order_cents && subtotalCents < r.min_order_cents)
     return { error: `This code needs a minimum order of $${(r.min_order_cents / 100).toFixed(2)}.` };
-  if (sid) {
+  if (guardId) {
     if (r.one_per_customer) {
       const { data: prior } = await db
         .from("discount_redemptions")
         .select("id")
         .eq("code_id", d.id)
-        .eq("sid", sid)
+        .eq("sid", guardId)
         .limit(1);
       if (prior?.length) return { error: "You've already used this code." };
     }
     if (r.first_order_only) {
       const { data: bought } = await db
-        .from("events")
+        .from("orders")
         .select("id")
-        .eq("session_id", sid)
-        .eq("event", "purchase")
+        .eq("guard_id", guardId)
+        .eq("status", "paid")
         .limit(1);
       if (bought?.length) return { error: "This code is for first orders only." };
     }

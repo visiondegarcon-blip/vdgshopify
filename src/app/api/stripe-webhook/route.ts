@@ -22,12 +22,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
+  if (event.type === "checkout.session.expired") {
+    // stock was reserved atomically when the checkout session was created
+    // (see /api/checkout); if the shopper never paid, give it back rather
+    // than leaving it held for Stripe's session lifetime.
+    const session = event.data.object as Stripe.Checkout.Session;
+    const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey);
+    const cart: { v: number; q: number }[] = JSON.parse(session.metadata?.cart ?? "[]");
+    await Promise.all(cart.map((c) => admin.rpc("release_stock", { v_id: c.v, qty: c.q })));
+    return NextResponse.json({ ok: true });
+  }
+
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
     const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey);
 
     const cart: { v: number; q: number }[] = JSON.parse(session.metadata?.cart ?? "[]");
     const email = session.customer_details?.email ?? "unknown";
+    const guardId = session.metadata?.gid || null;
 
     // link to an auth user if one exists with this email
     let userId: string | null = null;
@@ -49,6 +61,7 @@ export async function POST(req: NextRequest) {
         shipping_name: session.customer_details?.name ?? null,
         shipping_address: session.customer_details?.address ?? null,
         discount_cents: session.total_details?.amount_discount ?? 0,
+        guard_id: guardId,
       })
       .select()
       .single();
@@ -65,6 +78,9 @@ export async function POST(req: NextRequest) {
       .select("id,title,price_cents,products(title)")
       .in("id", ids);
 
+    // Stock was already reserved (decremented) atomically when the checkout
+    // session was created — see /api/checkout's reserve_stock call. Doing it
+    // again here would double-decrement every paid order.
     for (const c of cart) {
       const v = variants?.find((x) => x.id === c.v);
       await admin.from("order_items").insert({
@@ -75,16 +91,16 @@ export async function POST(req: NextRequest) {
         quantity: c.q,
         unit_price_cents: v?.price_cents ?? 0,
       });
-      await admin.rpc("decrement_stock", { v_id: c.v, qty: c.q });
     }
 
     // record discount redemption for anti-abuse limits (one-per-customer etc.)
+    // — keyed on the server-issued guard id, not the client-rotatable sid
     const codeId = Number(session.metadata?.discount_code_id);
     if (codeId) {
       await admin.from("discount_redemptions").insert({
         code_id: codeId,
         email,
-        sid: session.metadata?.sid || null,
+        sid: guardId,
         order_id: order.id,
       });
       const { data: dc } = await admin.from("discount_codes").select("uses").eq("id", codeId).single();

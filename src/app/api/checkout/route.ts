@@ -3,9 +3,14 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { validateDiscount, type DiscountRow } from "@/lib/discounts";
 import { quoteShipping } from "@/lib/shipping";
+import { rateLimit } from "@/lib/rateLimit";
 
 // Server-side: validates prices/stock from the DB, never trusts the client.
 export async function POST(req: NextRequest) {
+  // each hit can create a Stripe session; throttle to blunt flooding
+  const limited = rateLimit(req, { key: "checkout", limit: 15, windowMs: 60_000 });
+  if (limited) return limited;
+
   const stripeKey = process.env.STRIPE_SECRET_KEY;
   if (!stripeKey) {
     return NextResponse.json(
@@ -26,7 +31,7 @@ export async function POST(req: NextRequest) {
   const ids = items.map((i) => i.variantId);
   const { data: variants, error } = await supabase
     .from("variants")
-    .select("id,title,price_cents,stock,products(title,handle)")
+    .select("id,title,price_cents,stock,products(title,handle,status)")
     .in("id", ids);
   if (error || !variants) return NextResponse.json({ error: "Lookup failed" }, { status: 500 });
 
@@ -34,6 +39,11 @@ export async function POST(req: NextRequest) {
   for (const item of items) {
     const v = variants.find((x) => x.id === item.variantId);
     if (!v) return NextResponse.json({ error: "Item not found" }, { status: 400 });
+    // never let a draft/hidden product be bought by posting its variant id
+    // directly — only live products are purchasable
+    const prod = v.products as unknown as { title: string; status?: string } | null;
+    if (!prod || prod.status !== "active")
+      return NextResponse.json({ error: "That item isn't available." }, { status: 400 });
     const qty = Math.max(1, Math.min(10, Math.floor(item.qty)));
     if (v.stock < qty)
       return NextResponse.json(

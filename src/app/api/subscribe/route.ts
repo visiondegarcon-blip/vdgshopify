@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { rateLimit } from "@/lib/rateLimit";
 
 /* Public signup endpoint used by the countdown lock and the scroll popup.
    Inserts into subscribers (service role; table has no public policies) and
    returns the popup's discount code when the source is the popup. */
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimit(req, { key: "subscribe", limit: 5, windowMs: 60_000 });
+  if (limited) return limited;
+
   const body = await req.json().catch(() => null);
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
   const phone = typeof body?.phone === "string" ? body.phone.trim() : "";

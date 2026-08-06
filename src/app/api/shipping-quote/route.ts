@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { quoteShipping, shippableCountries } from "@/lib/shipping";
+import { rateLimit } from "@/lib/rateLimit";
 
 /* Cart page asks for live shipping options once the shopper picks a country.
    Stripe Checkout can't recalculate shipping from the address the shopper
@@ -11,6 +12,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimit(req, { key: "shipping-quote", limit: 30, windowMs: 60_000 });
+  if (limited) return limited;
+
   const body = await req.json().catch(() => null);
   const country = typeof body?.country === "string" ? body.country : "";
   const items: { variantId: number; qty: number }[] = Array.isArray(body?.items) ? body.items : [];

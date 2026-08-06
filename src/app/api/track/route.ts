@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { rateLimit } from "@/lib/rateLimit";
 
 /* Ingestion endpoint for first-party analytics. Accepts small batches from
    sendBeacon; enriches with Vercel geo headers and a coarse device class.
@@ -26,6 +27,11 @@ const ALLOWED = new Set([
 ]);
 
 export async function POST(req: NextRequest) {
+  // analytics is high-volume by design (page views, vitals, clicks) so this
+  // ceiling is generous — it only catches genuine flooding
+  const limited = rateLimit(req, { key: "track", limit: 120, windowMs: 60_000 });
+  if (limited) return limited;
+
   let body: { events?: Record<string, unknown>[] };
   try {
     body = await req.json();

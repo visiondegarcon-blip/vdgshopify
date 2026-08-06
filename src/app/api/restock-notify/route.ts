@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { rateLimit } from "@/lib/rateLimit";
 
 /* "Email me when this is back" on a sold-out variant.
  *
@@ -11,6 +12,9 @@ import { createClient } from "@supabase/supabase-js";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimit(req, { key: "restock-notify", limit: 5, windowMs: 60_000 });
+  if (limited) return limited;
+
   const body = await req.json().catch(() => null);
   const variantId = Number(body?.variantId);
   const email = String(body?.email ?? "").trim().toLowerCase();

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { blocksToHtml, blocksToText, type Block, type EmailFont } from "@/lib/emailHtml";
 import { DEFAULT_FROM, sendCampaignEmails, sendOne, siteUrl } from "@/lib/resendSend";
 import { notifyRestock, runDailyAutomations } from "@/lib/retention";
+import { MAX_UPLOAD_BYTES, sniffImageType } from "@/lib/imageSniff";
 
 /* Single admin endpoint. Every call must carry the caller's Supabase access
    token; we verify it server-side and check the email against the allowlist
@@ -578,8 +579,11 @@ export async function POST(req: NextRequest) {
         const { filename, base64 } = body;
         const ext = (String(filename).split(".").pop() || "png").toLowerCase();
         if (!["png", "jpg", "jpeg", "webp", "gif", "avif"].includes(ext)) throw new Error("Unsupported file type");
-        const path = `site/${Date.now()}.${ext}`;
         const buf = Buffer.from(base64, "base64");
+        // don't trust the extension: check the real bytes and cap the size
+        if (buf.length > MAX_UPLOAD_BYTES) throw new Error("Image too large (max 20 MB).");
+        if (!sniffImageType(buf)) throw new Error("That file isn't a valid image.");
+        const path = `site/${Date.now()}.${ext}`;
         const { error } = await db.storage.from("product-images").upload(path, buf, {
           contentType: ext === "jpg" || ext === "jpeg" ? "image/jpeg" : `image/${ext}`,
         });
@@ -595,8 +599,11 @@ export async function POST(req: NextRequest) {
         // the admin re-encodes to JPEG client-side; anything else here is
         // either a background-removal PNG or an unexpected payload
         if (!["png", "jpg", "jpeg", "webp"].includes(ext)) throw new Error("Unsupported file type");
-        const path = `p${productId}/${Date.now()}.${ext}`;
         const buf = Buffer.from(base64, "base64");
+        // don't trust the extension: check the real bytes and cap the size
+        if (buf.length > MAX_UPLOAD_BYTES) throw new Error("Image too large (max 20 MB).");
+        if (!sniffImageType(buf)) throw new Error("That file isn't a valid image.");
+        const path = `p${Number(productId)}/${Date.now()}.${ext}`;
         const { error } = await db.storage.from("product-images").upload(path, buf, {
           contentType: ext === "jpg" || ext === "jpeg" ? "image/jpeg" : `image/${ext}`,
         });
